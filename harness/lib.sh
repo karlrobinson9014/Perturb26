@@ -76,6 +76,10 @@ calc() { "$PY" -c "print($1)"; }
 run_isolated() {  # run_isolated timeout_s stdin_file stdout_file stderr_file cmd...
   local limit="$1" input="$2" out="$3" err="$4"; shift 4
   local pid rc
+  if ! command -v setsid >/dev/null; then  # non-Linux dev machines: no session isolation
+    timeout --kill-after=60 "$limit" "$@" < "$input" > "$out" 2> "$err"
+    return $?
+  fi
   setsid bash -c 'exec timeout --kill-after=60 "$@"' _ "$limit" "$@" < "$input" > "$out" 2> "$err" &
   pid=$!
   wait "$pid"; rc=$?
