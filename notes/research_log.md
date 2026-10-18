@@ -12,3 +12,8 @@ Each entry: `## <date> iter <N>: <title>`, then hypothesis, plan, result (number
 - Dev set: 64 shards from `data/validation` of perturb-ai/efficientnet-v2-l-adv-dataset @164079ef, with
   336 competitor adversarials (about 5 per image) for `tools/competitor_scores.py`.
 - Not yet measured on the real model on GPU; that is the first build item.
+- Real model, CPU (`python -m bench.run_bench --limit 2 --budget 300 --variants default`):
+  images 20260922T053148Z-0003 / 20260923T033553Z-0002 scored 0.963 / 0.942 (competitor best 0.981 / 0.975).
+  The second image: margin 1.00 (exactly the safety floor), 80,964 nonzero values, 159 steps, first flip at step 9.
+  Reading: v0 flips easily at 1/255; the gap to the leaders is margin (+0.03 available) and sparsity.
+  Raw: results/cpu-sanity-v0.json.
