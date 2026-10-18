@@ -104,7 +104,7 @@ def main() -> int:
     records = []
     started = time.time()
     for index, (item, path) in enumerate(items, start=1):
-        task_id = f"bench-{item['offset']:06d}"
+        task_id = f"bench-{item['key']}"
         clean_b64 = task_b64_from_bytes(path.read_bytes())
         t0 = time.time()
         info: dict = {}
@@ -121,8 +121,8 @@ def main() -> int:
         if args.save_adv:
             import base64
 
-            (args.save_adv / f"{item['offset']:06d}.png").write_bytes(base64.b64decode(adv_b64))
-        record = {"offset": item["offset"], "image_id": item.get("image_id"), "elapsed": round(elapsed, 3),
+            (args.save_adv / f"{item['key']}.png").write_bytes(base64.b64decode(adv_b64))
+        record = {"key": item["key"], "image_id": item.get("image_id"), "elapsed": round(elapsed, 3),
                   "official": scored["official"], "max_variant": scored["max_variant"],
                   "variant_disagreement": scored["variant_disagreement"], "reasons": scored["reasons"],
                   "margin": scored["variants"][scorer.variants[0]]["margin"],
