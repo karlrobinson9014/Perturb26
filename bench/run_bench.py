@@ -109,17 +109,23 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--save-adv", type=Path, default=None, help="directory to keep the adversarial PNGs")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--attack-only", type=Path, default=None, metavar="DIR",
+                        help="write adv/ , records.json and meta.json to DIR and stop; the harness then runs "
+                             "bench.score itself after checking the tree (agent code must not spawn the scorer)")
     args = parser.parse_args()
 
     items = load_items(args.manifest, args.limit)
-    work = Path(tempfile.mkdtemp(prefix="perturb26-bench-"))
+    work = args.attack_only or Path(tempfile.mkdtemp(prefix="perturb26-bench-"))
     adv_dir = work / "adv"
-    adv_dir.mkdir()
+    adv_dir.mkdir(parents=True, exist_ok=True)
     attack_started = time.time()
     records, meta = attack_phase(args, items, adv_dir)
     meta["attack_wall_seconds"] = round(time.time() - attack_started, 1)
     records_path = work / "records.json"
     records_path.write_text(json.dumps(records), encoding="utf-8")
+    if args.attack_only:
+        (work / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        return 0
 
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONSTARTUP",)}
     env["PYTHONPATH"] = str(REPO_ROOT)

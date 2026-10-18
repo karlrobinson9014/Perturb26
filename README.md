@@ -50,9 +50,29 @@ Each iteration is a fresh headless session: `claude -p --output-format stream-js
    `best-iterN-<sha>`, and both are pushed (with `PUSH=1`). Discard means the code is reset and the notes are kept.
    Every outcome goes to `status/results.tsv`.
 
-Isolation: with an empty `AGENT_RUN_PREFIX`, agents run as the harness user, so the guards stop
-mistakes and casual gaming but not a determined agent (it could read the holdout). For real
-isolation, run agents as a separate Unix user (see `harness/loop.env.example`).
+### Isolation
+Agent-written code runs in three places: the agent session, its tests in the gate, and the attack
+phase of every bench. After each of these the harness runs `integrity_check`: no stray or ignored
+files in the tree, `upstream/` on its pin and clean, and no file in `.venv/` or `data/` with a newer
+ctime than the loop's start time, which only the harness holds. Then the scorer runs as `python -I`
+with a private pycache and imports nothing from `miner26/`. A violation discards the iteration and
+everything it produced. If `.venv`, `upstream` or `data` changed, the loop stops for a human.
+
+None of this stops code that runs **as the harness user** from reading the holdout or writing outside the repo.
+For real isolation run agent sessions and attack phases as a second user that can write the repo but can't
+read `$HOLDOUT_DIR` or write `.venv`:
+```bash
+sudo useradd -m perturb26-agent && sudo usermod -aG "$(id -gn)" perturb26-agent
+chmod -R g+rwX . && find . -type d -exec chmod g+s {} +   # shared group, new files inherit it
+git config core.sharedRepository group
+sudo -u perturb26-agent git config --global --add safe.directory "$PWD"
+chmod -R g-w .venv && chmod 700 "$HOLDOUT_DIR"
+# harness/loop.env (both run under umask 002):
+AGENT_RUN_PREFIX="sudo -u perturb26-agent -H --preserve-env=PYTHONPATH,ANTHROPIC_API_KEY"
+BENCH_RUN_PREFIX="sudo -u perturb26-agent -H --preserve-env=PYTHONPATH"
+```
+The holdout images still pass through the attack phase (the attack has to see them), so with
+`BENCH_RUN_PREFIX` empty an attack could copy them outside the repo, where `integrity_check` doesn't look.
 
 The loop stops on `STOP`, `MAX_ITERS`, `MAX_COST_USD`, or when dev and holdout both reach `TARGET_SCORE`.
 

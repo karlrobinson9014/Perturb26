@@ -80,6 +80,7 @@ def main() -> int:
     times = sorted(float(r.get("elapsed", 0.0)) for r in records)
     successes = [o for o in officials if o > 0]
     summary = {
+        **json.loads(args.meta),  # first, so caller-supplied meta can never override computed fields
         "manifest": str(args.manifest), "n": len(records),
         "mean_official": statistics.fmean(officials) if officials else 0.0,
         "median_official": statistics.median(officials) if officials else 0.0,
@@ -96,7 +97,6 @@ def main() -> int:
         "device": torch.cuda.get_device_name(device) if device.type == "cuda" else platform.processor() or "cpu",
         "torch": torch.__version__,
         "score_wall_seconds": round(time.time() - started, 1),
-        **json.loads(args.meta),
     }
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

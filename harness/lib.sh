@@ -39,7 +39,10 @@ load_env() {
   HOLDOUT_DIR="${HOLDOUT_DIR:-$HOME/perturb26-holdout}"
   DEV_MANIFEST="${DEV_MANIFEST:-$ROOT/bench/manifests/dev.json}"
   PY="${PY:-$ROOT/.venv/bin/python}"
+  BENCH_RUN_PREFIX="${BENCH_RUN_PREFIX:-}"
   export PYTHONPATH="$ROOT"
+  # loop.env is sourced with set -a; the holdout location must not reach agent environments.
+  export -n HOLDOUT_DIR 2>/dev/null || true
 }
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -87,8 +90,38 @@ run_isolated() {  # run_isolated timeout_s stdin_file stdout_file stderr_file cm
   return "$rc"
 }
 
-# Fingerprint of the Python environment; an agent editing .venv is invisible to git.
-venv_fingerprint() { "$PY" -m pip freeze 2>/dev/null | sha256sum | cut -c1-16; }
+# What agent-written code (the agent session, its tests in the gate, the attack phase of a
+# bench) may have left behind since `since` (epoch seconds, held only in harness memory).
+# Uses ctime, which a user cannot set back. Prints one line per problem; empty = clean.
+#   tree:<path>      uncommitted or untracked file in the work tree (ignored files included)
+#   upstream:<what>  submodule moved off its pin or modified
+#   venv:<path>      a file in .venv changed (site-packages, .pth, sitecustomize, ...)
+#   data:<path>      a benchmark image changed
+integrity_check() {  # integrity_check since_epoch [allowed_glob...]
+  local since="$1"; shift
+  local line path pattern hit
+  (
+    cd "$ROOT" || exit 1
+    git status --porcelain --ignored --untracked-files=all | while IFS= read -r line; do
+      path="${line:3}"
+      case "$path" in
+        data/* | .venv/* | logs/* | harness/loop.env | miner.env | STOP | PAUSE) continue ;;
+        __pycache__/* | */__pycache__/* | .pytest_cache/* | */.pytest_cache/*) continue ;;
+      esac
+      for pattern in "$@"; do
+        # shellcheck disable=SC2053
+        [[ "$path" == $pattern ]] && continue 2
+      done
+      echo "tree:$path"
+    done
+    [[ "$(git -C upstream rev-parse HEAD 2>/dev/null)" == "$(git ls-tree HEAD upstream | awk '{print $3}')" ]] || echo "upstream:moved"
+    [[ -z "$(git -C upstream status --porcelain --untracked-files=all 2>/dev/null | grep -v __pycache__)" ]] || echo "upstream:dirty"
+    hit="$(find "$ROOT/.venv" -newerct "@$since" -type f -not -path '*/__pycache__/*' -print -quit 2>/dev/null)"
+    [[ -z "$hit" ]] || echo "venv:$hit"
+    hit="$(find "$ROOT/data" -newerct "@$since" -type f -print -quit 2>/dev/null)"
+    [[ -z "$hit" ]] || echo "data:$hit"
+  )
+}
 
 # ---------------------------------------------------------------- git
 
@@ -146,21 +179,30 @@ promote_to_main() {  # promote_to_main "message" tag
 # agent notes (notes/, STATUS.md, backlog.md), bench outputs (results/), this
 # iteration's review, and the harness's iterations.tsv row. Everything else,
 # including any tampering with protected files, goes back to start_sha.
-discard_iteration() {  # discard_iteration start_sha reason iter
+#
+# With mode "strict" (integrity violations: agent code wrote where it must not, possibly
+# holdout data) nothing the iteration produced is kept, and ignored files are cleaned too.
+discard_iteration() {  # discard_iteration start_sha reason iter [strict]
   cd "$ROOT" || return 1
-  local keep review
+  local keep review strict="${4:-}"
   keep="$(mktemp -d)"
   review="status/reviews/iter-$3.json"
-  cp -r notes results "$keep/" 2>/dev/null || true
-  cp status/STATUS.md status/backlog.md "$keep/" 2>/dev/null || true
+  if [[ "$strict" != strict ]]; then
+    cp -r notes results "$keep/" 2>/dev/null || true
+    cp status/STATUS.md status/backlog.md "$keep/" 2>/dev/null || true
+  fi
   [[ -f "$review" ]] && cp "$review" "$keep/review.json"
   git diff "$1" HEAD > "$LOGS/rejected-iter-$3.patch" 2>/dev/null || true
   git reset -q --hard "$1"
-  git clean -qfd
-  rm -rf notes results
-  cp -r "$keep/notes" notes
-  cp -r "$keep/results" results 2>/dev/null || mkdir -p results
-  cp "$keep/STATUS.md" "$keep/backlog.md" status/ 2>/dev/null || true
+  if [[ "$strict" == strict ]]; then
+    git clean -qfdx -e data -e .venv -e logs -e harness/loop.env -e miner.env
+  else
+    git clean -qfd
+    rm -rf notes results
+    cp -r "$keep/notes" notes
+    cp -r "$keep/results" results 2>/dev/null || mkdir -p results
+    cp "$keep/STATUS.md" "$keep/backlog.md" status/ 2>/dev/null || true
+  fi
   [[ -f "$keep/review.json" ]] && cp "$keep/review.json" "$review"
   if [[ -f "$LOGS/.last_iter_row" ]]; then
     cat "$LOGS/.last_iter_row" >> "$STATUS/iterations.tsv"
@@ -197,26 +239,34 @@ ledger() {  # ledger iter mode commit dev holdout decision reason
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(ts)" "$@" >> "$file"
 }
 
-# Run a bench, then check it from the harness side: the score comes from the separate
-# scorer process, and the attack phase's wall time (measured here, minus the scorer's
-# own wall time) must fit n x (budget + slack) plus a model-load allowance.
-bench_score() {  # bench_score manifest out_json -> prints mean_official; non-zero on failure or overrun
-  local started wall n score_wall attack_wall allowed
+# A harness bench, in two steps the harness runs itself:
+#  1. attack phase (agent code): `run_bench --attack-only` in its own session, killed at
+#     n x (budget + slack) + model-load allowance of wall clock, measured here;
+#  2. integrity check, then the scorer in a fresh `python -I` (no PYTHONPATH, no user site,
+#     private pycache) that imports nothing from miner26/.
+# Prints mean_official. Returns 1 on failure or overrun, 2 on an integrity violation.
+bench_score() {  # bench_score manifest out_json since_epoch
+  local manifest="$1" out="$2" since="$3" work n allowed started wall problems
+  work="$(mktemp -d)"
+  [[ -n "$BENCH_RUN_PREFIX" ]] && chmod 777 "$work"
+  n="$("$PY" -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['items']))" "$manifest")" || return 1
+  allowed="$("$PY" -c "print(int($n * ($BENCH_BUDGET + $TIME_SLACK) + 90))")"
   started=$(date +%s)
-  "$PY" -m bench.run_bench --manifest "$1" --budget "$BENCH_BUDGET" --out "$2" >> "$LOGS/bench.log" 2>&1 || return 1
+  # shellcheck disable=SC2086
+  if ! run_isolated "$allowed" /dev/null "$LOGS/bench-attack.log" "$LOGS/bench-attack.err" \
+      $BENCH_RUN_PREFIX "$PY" -m bench.run_bench --attack-only "$work" --manifest "$manifest" --budget "$BENCH_BUDGET"; then
+    log "bench attack phase failed or was killed at ${allowed}s ($manifest)"; return 1
+  fi
   wall=$(($(date +%s) - started))
-  n="$(json_get "$2" 'd["summary"]["n"]')"
-  score_wall="$(json_get "$2" 'd["summary"]["score_wall_seconds"]')"
-  [[ -n "$n" && -n "$score_wall" ]] || return 1
-  attack_wall="$(calc "$wall - $score_wall")"
-  allowed="$(calc "$n * ($BENCH_BUDGET + $TIME_SLACK) + 120")"
-  if float_gt "$attack_wall" "$allowed"; then
-    log "bench overran its budget: attack phase ${attack_wall}s > allowed ${allowed}s ($1)"
-    return 1
+  if ((wall > allowed)); then log "bench attack phase overran: ${wall}s > ${allowed}s ($manifest)"; return 1; fi
+  problems="$(integrity_check "$since")"
+  if [[ -n "$problems" ]]; then log "integrity violation after attack phase: $(echo "$problems" | tr '\n' ' ')"; return 2; fi
+  "$PY" -I -X pycache_prefix="$work/pyc" -c \
+    'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module("bench.score", run_name="__main__", alter_sys=True)' \
+    "$ROOT" --manifest "$manifest" --adv-dir "$work/adv" --records "$work/records.json" \
+    --meta "$(cat "$work/meta.json" 2>/dev/null || echo '{}')" --out "$out" >> "$LOGS/bench.log" 2>&1 || return 1
+  if float_gt "$(json_get "$out" 'd["summary"]["time_max"]')" "$(calc "$BENCH_BUDGET + $TIME_SLACK")"; then
+    log "bench time_max above budget + slack ($manifest)"; return 1
   fi
-  if float_gt "$(json_get "$2" 'd["summary"]["time_max"]')" "$(calc "$BENCH_BUDGET + $TIME_SLACK")"; then
-    log "bench time_max above budget + slack ($1)"
-    return 1
-  fi
-  json_get "$2" 'd["summary"]["mean_official"]'
+  json_get "$out" 'd["summary"]["mean_official"]'
 }

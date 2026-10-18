@@ -134,8 +134,9 @@ seed_best() {
   log "no status/best.json: benchmarking current HEAD to seed the baseline"
   local sha dev holdout
   sha="$(git rev-parse --short HEAD)"
-  dev="$(bench_score "$DEV_MANIFEST" "$ROOT/$HARNESS_RESULTS/dev-seed-$sha.json")" || { log "ERROR seed dev bench failed"; return 1; }
-  holdout="$(bench_score "$HOLDOUT_DIR/holdout.json" "$HOLDOUT_DIR/results/holdout-seed-$sha.json")" || { log "ERROR seed holdout bench failed"; return 1; }
+  dev="$(bench_score "$DEV_MANIFEST" "$ROOT/$HARNESS_RESULTS/dev-seed-$sha.json" "$SINCE")" || { log "ERROR seed dev bench failed"; return 1; }
+  commit_all "loop: seed dev bench $dev"
+  holdout="$(bench_score "$HOLDOUT_DIR/holdout.json" "$HOLDOUT_DIR/results/holdout-seed-$sha.json" "$SINCE")" || { log "ERROR seed holdout bench failed"; return 1; }
   write_best 0 "$sha" "$dev" "$holdout" "$HARNESS_RESULTS/dev-seed-$sha.json"
   ledger 0 seed "$sha" "$dev" "$holdout" seed "baseline of HEAD"
   commit_all "loop: seed baseline dev=$dev holdout=$holdout"
@@ -149,15 +150,24 @@ target_reached() {
   [[ -n "$dev" && -n "$holdout" ]] && ! float_gt "$TARGET_SCORE" "$dev" && ! float_gt "$TARGET_SCORE" "$holdout"
 }
 
+bench_failure() {  # bench_failure rc iter mode start sha dev label
+  if [[ "$1" == 2 ]]; then
+    discard_iteration "$4" "integrity violation in $7 bench" "$2" strict
+    ledger "$2" "$3" "$5" "$6" "" discard "integrity violation during $7 bench (strict discard)"
+  else
+    discard_iteration "$4" "$7 bench failed or overran" "$2"
+    ledger "$2" "$3" "$5" "$6" "" discard "$7 bench failed or overran budget"
+  fi
+}
+
 evaluate_and_decide() {  # evaluate_and_decide iter mode start_sha
-  local iter="$1" mode="$2" start="$3" sha dev best_dev peak dev_json hold_json holdout verdict
+  local iter="$1" mode="$2" start="$3" sha dev best_dev peak dev_json hold_json holdout verdict rc problems
   sha="$(git rev-parse --short HEAD)"
   dev_json="$HARNESS_RESULTS/dev-iter$iter-$sha.json"
   log "iter $iter: harness dev bench on $sha"
-  if ! dev="$(bench_score "$DEV_MANIFEST" "$ROOT/$dev_json")" || [[ -z "$dev" ]]; then
-    discard_iteration "$start" bench_failed_or_overran "$iter"
-    ledger "$iter" "$mode" "$sha" "" "" discard "bench failed or overran budget"; return
-  fi
+  dev="$(bench_score "$DEV_MANIFEST" "$ROOT/$dev_json" "$SINCE")"; rc=$?
+  if ((rc != 0)) || [[ -z "$dev" ]]; then bench_failure "$rc" "$iter" "$mode" "$start" "$sha" "" dev; return; fi
+  commit_all "loop: iter $iter dev bench $dev"
   best_dev="$(json_get "$BEST_JSON" 'd["dev_score"]')"; best_dev="${best_dev:-0}"
   if ! float_gt "$dev" "$(calc "$best_dev + $MIN_GAIN")"; then
     if [[ "$mode" == build ]] && float_gt "$dev" "$(calc "$best_dev - $MIN_GAIN")"; then
@@ -171,10 +181,8 @@ evaluate_and_decide() {  # evaluate_and_decide iter mode start_sha
 
   log "iter $iter: dev $dev > best $best_dev + $MIN_GAIN; harness holdout bench"
   hold_json="$HOLDOUT_DIR/results/holdout-iter$iter-$sha.json"
-  if ! holdout="$(bench_score "$HOLDOUT_DIR/holdout.json" "$hold_json")" || [[ -z "$holdout" ]]; then
-    discard_iteration "$start" holdout_bench_failed "$iter"
-    ledger "$iter" "$mode" "$sha" "$dev" "" discard "holdout bench failed or overran budget"; return
-  fi
+  holdout="$(bench_score "$HOLDOUT_DIR/holdout.json" "$hold_json" "$SINCE")"; rc=$?
+  if ((rc != 0)) || [[ -z "$holdout" ]]; then bench_failure "$rc" "$iter" "$mode" "$start" "$sha" "$dev" holdout; return; fi
   peak="$(json_get "$BEST_JSON" 'd.get("holdout_peak", d["holdout_score"])')"; peak="${peak:-0}"
   local hold_floor
   hold_floor="$(calc "$peak - $HOLDOUT_TOL")"
@@ -183,8 +191,12 @@ evaluate_and_decide() {  # evaluate_and_decide iter mode start_sha
     ledger "$iter" "$mode" "$sha" "$dev" "$holdout" discard "holdout below peak-tol ($hold_floor)"; return
   fi
 
-  commit_all "loop: iter $iter dev bench $dev"
   verdict="$("$HARNESS/review.sh" "$iter" "$(reviewed_base)" "$(git rev-parse HEAD)" "$dev_json" "$hold_json")"
+  problems="$(integrity_check "$SINCE" "status/reviews/iter-$iter.json")"
+  if [[ -n "$problems" ]]; then
+    log "iter $iter: integrity violation after review: $(echo "$problems" | tr '\n' ' ')"
+    verdict=REJECT
+  fi
   if [[ "$verdict" == APPROVE ]]; then
     write_best "$iter" "$sha" "$dev" "$holdout" "$dev_json"
     ledger "$iter" "$mode" "$sha" "$dev" "$holdout" accept "reviewer APPROVE"
@@ -208,8 +220,28 @@ finish_iteration() {  # finish_iteration iter
 log "loop start (pid $$, mode=$LOOP_MODE, push=$PUSH, max_iters=$MAX_ITERS)"
 git_sync || { log "ERROR initial git sync failed"; exit 1; }
 init_ledgers
+# Integrity reference time, held in this process only (agents can't move it). Anything in
+# .venv, data/, upstream/ or the work tree that changes after this is caught by integrity_check.
+SINCE="$(date +%s)"
+sleep 1
 seed_best || { log "ERROR could not seed baseline; fix setup (harness/setup_box.sh)"; exit 1; }
-VENV_PRINT="$(venv_fingerprint)"  # held in this process only, out of the agent's reach
+
+# Integrity problems right after an agent-code step. venv/upstream/data problems stop the
+# loop for a human; stray tree files only discard the iteration (strictly).
+check_after() {  # check_after step iter mode start short -> 0 clean, 1 handled (caller continues)
+  local problems
+  problems="$(integrity_check "$SINCE")"
+  [[ -z "$problems" ]] && return 0
+  log "iter $2: integrity violation after $1: $(echo "$problems" | tr '\n' ' ')"
+  discard_iteration "$4" "integrity violation after $1" "$2" strict
+  ledger "$2" "$3" "$5" "" "" discard "integrity violation after $1: $(echo "$problems" | head -3 | tr '\n' ' ')"
+  if grep -qE '^(venv|upstream|data):' <<<"$problems"; then
+    log "environment outside git was modified; stopping for a human"
+    finish_iteration "$2"; touch "$ROOT/STOP"; exit 0
+  fi
+  finish_iteration "$2"
+  return 1
+}
 
 while true; do
   [[ -f "$ROOT/STOP" ]] && { log "STOP file present; exiting"; exit 0; }
@@ -233,12 +265,7 @@ while true; do
     ledger "$iter" "$mode" "$short" "" "" noop "agent made no commits"
     finish_iteration "$iter"; continue
   fi
-  if [[ "$(venv_fingerprint)" != "$VENV_PRINT" ]]; then
-    log "iter $iter: the Python environment changed during the agent run; stopping for a human"
-    discard_iteration "$start_sha" venv_modified "$iter"
-    ledger "$iter" "$mode" "$short" "" "" discard "venv modified (loop stopped)"
-    finish_iteration "$iter"; touch "$ROOT/STOP"; exit 0
-  fi
+  check_after "agent session" "$iter" "$mode" "$start_sha" "$short" || continue
   violations="$(path_violations "$start_sha" "$head_sha" | tr '\n' ' ')"
   if [[ -n "$violations" ]]; then
     log "iter $iter: paths outside the agent allowlist: $violations"
@@ -252,6 +279,7 @@ while true; do
     ledger "$iter" "$mode" "$short" "" "" discard gate_failed
     finish_iteration "$iter"; continue
   fi
+  check_after gates "$iter" "$mode" "$start_sha" "$short" || continue
   if git diff --quiet "$start_sha" "$head_sha" -- miner26; then
     ledger "$iter" "$mode" "$short" "" "" keep "no miner26 change; gates pass"
   else
