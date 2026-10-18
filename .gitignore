@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+data/
+logs/*
+!logs/.gitkeep
+harness/loop.env
+miner.env
+STOP
+PAUSE
+*.patch

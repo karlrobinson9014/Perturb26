@@ -1,0 +1,17 @@
+# Paths the loop agent may not change. Any diff touching them is discarded by the
+# harness before benchmarking. Humans change these on main; the loop merges main in.
+upstream
+.gitmodules
+harness/*
+prompts/*
+CLAUDE.md
+bench/official.py
+bench/run_bench.py
+bench/fetch_data.py
+bench/manifests/*
+tests/contract/*
+tests/conftest.py
+status/results.tsv
+status/best.json
+status/iterations.tsv
+status/reviews/*
