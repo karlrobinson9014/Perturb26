@@ -17,8 +17,8 @@ echo "== import miner26.neuron"
 
 echo "== smoke bench"
 smoke="$(mktemp -d)/smoke.json"
-"$PY" -m bench.run_bench --manifest "$DEV_MANIFEST" --limit 3 --budget 8 --variants default --out "$smoke"
+"$PY" -m bench.run_bench --manifest "$DEV_MANIFEST" --limit 3 --budget "${GATE_SMOKE_BUDGET:-8}" --variants default --out "$smoke"
 success="$(json_get "$smoke" 'd["summary"]["success_rate"]')"
-echo "smoke success_rate=$success"
-float_gt "$success" 0
+echo "smoke success_rate=$success (must exceed ${GATE_MIN_SUCCESS:-0})"
+float_gt "$success" "${GATE_MIN_SUCCESS:-0}"
 echo "GATES PASS"
