@@ -18,8 +18,13 @@ cd "$ROOT" || exit 1
 ITERS_TSV="$STATUS/iterations.tsv"
 BEST_JSON="$STATUS/best.json"
 
-next_iter() {
+init_ledgers() {  # harness-owned files exist and are committed before any agent runs
   [[ -f "$ITERS_TSV" ]] || printf 'ts\titer\tmode\trc\tseconds\tcost_usd\tturns\tresult\n' > "$ITERS_TSV"
+  [[ -f "$STATUS/results.tsv" ]] || printf 'ts\titer\tmode\tcommit\tdev_score\tholdout_score\tdecision\treason\n' > "$STATUS/results.tsv"
+  commit_all "loop: init ledgers"
+}
+
+next_iter() {
   local last
   last="$(tail -n 1 "$ITERS_TSV" | cut -f2)"
   [[ "$last" =~ ^[0-9]+$ ]] && echo $((last + 1)) || echo 1
@@ -184,6 +189,7 @@ evaluate_and_decide() {  # evaluate_and_decide iter mode start_sha
 # ---------------------------------------------------------------- main
 log "loop start (pid $$, mode=$LOOP_MODE, push=$PUSH, max_iters=$MAX_ITERS)"
 git_sync || { log "ERROR initial git sync failed"; exit 1; }
+init_ledgers
 seed_best || { log "ERROR could not seed baseline; fix setup (harness/setup_box.sh)"; exit 1; }
 
 while true; do
