@@ -102,7 +102,9 @@ integrity_check() {  # integrity_check since_epoch [allowed_glob...]
   local line path pattern hit
   (
     cd "$ROOT" || exit 1
-    git status --porcelain --ignored --untracked-files=all | while IFS= read -r line; do
+    # -z: paths are never quoted (spaces, unicode); pathspec excludes keep the scan cheap.
+    git status --porcelain=v1 -z --no-renames --ignored --untracked-files=all -- . \
+      ':(exclude).venv' ':(exclude)data' ':(exclude)logs' | while IFS= read -r -d '' line; do
       path="${line:3}"
       case "$path" in
         data/* | .venv/* | logs/* | harness/loop.env | miner.env | STOP | PAUSE) continue ;;

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import platform
 import statistics
@@ -59,7 +60,10 @@ def main() -> int:
         key = item["key"]
         if key not in attack_records:
             continue  # --limit on the attack phase
-        clean_b64 = clean_task_b64((data_dir / item["file"]).read_bytes())
+        raw = (data_dir / item["file"]).read_bytes()
+        if item.get("sha256") and hashlib.sha256(raw).hexdigest() != item["sha256"]:
+            raise SystemExit(f"benchmark image {item['file']} does not match its manifest sha256; refusing to score")
+        clean_b64 = clean_task_b64(raw)
         adv_path = args.adv_dir / f"{key}.png"
         if adv_path.exists():
             scored = scorer.score(f"bench-{key}", clean_b64, base64.b64encode(adv_path.read_bytes()).decode("utf-8"))
