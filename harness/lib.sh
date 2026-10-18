@@ -41,7 +41,8 @@ load_env() {
 }
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-log() { echo "[$(ts)] $*" | tee -a "$LOGS/harness.log"; }
+# stderr, never stdout: review.sh's stdout is its machine-read verdict line.
+log() { echo "[$(ts)] $*" | tee -a "$LOGS/harness.log" >&2; }
 
 retry() {  # retry N cmd...
   local n="$1"; shift
