@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 # Deterministic gates run by the harness (never by trust in the agent's report):
-#   1. full pytest suite (contract tests are protected)
-#   2. the production miner module imports
-#   3. a 3-image smoke bench runs end to end and scores at least one image
+#   1. contract tests, alone and under the harness's pytest config (agent test config ignored)
+#   2. the rest of the test suite
+#   3. the production miner module imports
+#   4. a 3-image smoke bench runs end to end and scores at least one image
 set -euo pipefail
 # shellcheck source=harness/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 load_env
 cd "$ROOT"
+PYTEST=("$PY" -m pytest -q -c "$HARNESS/pytest.ini" --rootdir "$ROOT" --confcutdir "$ROOT")
 
-echo "== pytest"
-"$PY" -m pytest -q tests
+echo "== contract tests"
+"${PYTEST[@]}" tests/contract
+
+echo "== other tests"
+others=$(find tests -name 'test_*.py' -not -path 'tests/contract/*' | sort)
+if [[ -n "$others" ]]; then
+  # shellcheck disable=SC2086
+  "${PYTEST[@]}" $others
+fi
 
 echo "== import miner26.neuron"
 "$PY" -c "import miner26.neuron"

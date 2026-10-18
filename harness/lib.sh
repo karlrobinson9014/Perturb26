@@ -23,21 +23,23 @@ load_env() {
   CLAUDE_MODEL="${CLAUDE_MODEL:-claude-opus-5-5}"
   REVIEW_MODEL="${REVIEW_MODEL:-$CLAUDE_MODEL}"
   CLAUDE_FLAGS="${CLAUDE_FLAGS:---dangerously-skip-permissions}"
+  AGENT_RUN_PREFIX="${AGENT_RUN_PREFIX:-}"
   MAX_TURNS="${MAX_TURNS:-150}"
   ITER_TIMEOUT="${ITER_TIMEOUT:-5400}"
-  REVIEW_TIMEOUT="${REVIEW_TIMEOUT:-5400}"
+  REVIEW_TIMEOUT="${REVIEW_TIMEOUT:-3600}"
   MAX_ITERS="${MAX_ITERS:-200}"
   MAX_COST_USD="${MAX_COST_USD:-0}"
   ITER_SLEEP="${ITER_SLEEP:-30}"
   LOOP_MODE="${LOOP_MODE:-auto}"
   BENCH_BUDGET="${BENCH_BUDGET:-22}"
+  TIME_SLACK="${TIME_SLACK:-2}"
   MIN_GAIN="${MIN_GAIN:-0.002}"
   HOLDOUT_TOL="${HOLDOUT_TOL:-0.003}"
   TARGET_SCORE="${TARGET_SCORE:-0.993}"
   HOLDOUT_DIR="${HOLDOUT_DIR:-$HOME/perturb26-holdout}"
   DEV_MANIFEST="${DEV_MANIFEST:-$ROOT/bench/manifests/dev.json}"
   PY="${PY:-$ROOT/.venv/bin/python}"
-  export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH="$ROOT"
 }
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -67,6 +69,22 @@ EOF
 }
 
 float_gt() { "$PY" -c "import sys; sys.exit(0 if float(sys.argv[1]) > float(sys.argv[2]) else 1)" "$1" "$2"; }
+calc() { "$PY" -c "print($1)"; }
+
+# Run a command in its own session and kill whatever it leaves behind (background
+# benches, servers), so nothing an agent started competes with the harness for the GPU.
+run_isolated() {  # run_isolated timeout_s stdin_file stdout_file stderr_file cmd...
+  local limit="$1" input="$2" out="$3" err="$4"; shift 4
+  local pid rc
+  setsid bash -c 'exec timeout --kill-after=60 "$@"' _ "$limit" "$@" < "$input" > "$out" 2> "$err" &
+  pid=$!
+  wait "$pid"; rc=$?
+  pkill -KILL -s "$pid" 2>/dev/null || true
+  return "$rc"
+}
+
+# Fingerprint of the Python environment; an agent editing .venv is invisible to git.
+venv_fingerprint() { "$PY" -m pip freeze 2>/dev/null | sha256sum | cut -c1-16; }
 
 # ---------------------------------------------------------------- git
 
@@ -102,6 +120,9 @@ push_branch() {  # push_branch branch
   retry 3 git -C "$ROOT" push -q "$REMOTE" "$1" --follow-tags || log "WARN push of $1 failed"
 }
 
+# Last work-branch commit already merged into main: everything after it is unreviewed.
+reviewed_base() { git -C "$ROOT" merge-base "$MAIN_BRANCH" "$WORK_BRANCH"; }
+
 promote_to_main() {  # promote_to_main "message" tag
   cd "$ROOT" || return 1
   git checkout -q "$MAIN_BRANCH"
@@ -112,7 +133,7 @@ promote_to_main() {  # promote_to_main "message" tag
     log "ERROR promote merge conflict"
     return 1
   fi
-  git tag -a "$2" -m "$1"
+  git tag -a "$2" -m "$1" || log "WARN tag $2 not created"
   push_branch "$MAIN_BRANCH"
   git checkout -q "$WORK_BRANCH"
 }
@@ -131,6 +152,7 @@ discard_iteration() {  # discard_iteration start_sha reason iter
   [[ -f "$review" ]] && cp "$review" "$keep/review.json"
   git diff "$1" HEAD > "$LOGS/rejected-iter-$3.patch" 2>/dev/null || true
   git reset -q --hard "$1"
+  git clean -qfd
   rm -rf notes results
   cp -r "$keep/notes" notes
   cp -r "$keep/results" results 2>/dev/null || mkdir -p results
@@ -144,15 +166,24 @@ discard_iteration() {  # discard_iteration start_sha reason iter
   commit_all "loop: iter $3 discarded ($2); notes kept"
 }
 
-# Paths the loop agent must never change (one glob per line).
-protected_violations() {  # protected_violations base head  -> prints offending paths
-  local base="$1" head="$2"
-  git -C "$ROOT" diff --name-only "$base" "$head" | while read -r path; do
-    while read -r pattern; do
-      [[ -z "$pattern" || "$pattern" == \#* ]] && continue
-      # shellcheck disable=SC2053
-      if [[ "$path" == $pattern ]]; then echo "$path"; break; fi
-    done < "$HARNESS/protected_paths.txt"
+_matches_any() {  # _matches_any path listfile
+  local pattern
+  while read -r pattern; do
+    [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+    # shellcheck disable=SC2053
+    [[ "$1" == $pattern ]] && return 0
+  done < "$2"
+  return 1
+}
+
+# Paths an iteration changed that the agent may not change: anything outside
+# harness/agent_paths.txt (allowlist), or inside it but listed in
+# harness/protected_paths.txt. --no-renames reports both sides of a rename.
+path_violations() {  # path_violations base head  -> prints offending paths
+  git -C "$ROOT" diff --no-renames --name-only "$1" "$2" | while read -r path; do
+    if ! _matches_any "$path" "$HARNESS/agent_paths.txt" || _matches_any "$path" "$HARNESS/protected_paths.txt"; then
+      echo "$path"
+    fi
   done
 }
 
@@ -162,7 +193,26 @@ ledger() {  # ledger iter mode commit dev holdout decision reason
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(ts)" "$@" >> "$file"
 }
 
-bench_score() {  # bench_score manifest out_json -> prints mean_official (or empty on failure)
+# Run a bench, then check it from the harness side: the score comes from the separate
+# scorer process, and the attack phase's wall time (measured here, minus the scorer's
+# own wall time) must fit n x (budget + slack) plus a model-load allowance.
+bench_score() {  # bench_score manifest out_json -> prints mean_official; non-zero on failure or overrun
+  local started wall n score_wall attack_wall allowed
+  started=$(date +%s)
   "$PY" -m bench.run_bench --manifest "$1" --budget "$BENCH_BUDGET" --out "$2" >> "$LOGS/bench.log" 2>&1 || return 1
+  wall=$(($(date +%s) - started))
+  n="$(json_get "$2" 'd["summary"]["n"]')"
+  score_wall="$(json_get "$2" 'd["summary"]["score_wall_seconds"]')"
+  [[ -n "$n" && -n "$score_wall" ]] || return 1
+  attack_wall="$(calc "$wall - $score_wall")"
+  allowed="$(calc "$n * ($BENCH_BUDGET + $TIME_SLACK) + 120")"
+  if float_gt "$attack_wall" "$allowed"; then
+    log "bench overran its budget: attack phase ${attack_wall}s > allowed ${allowed}s ($1)"
+    return 1
+  fi
+  if float_gt "$(json_get "$2" 'd["summary"]["time_max"]')" "$(calc "$BENCH_BUDGET + $TIME_SLACK")"; then
+    log "bench time_max above budget + slack ($1)"
+    return 1
+  fi
   json_get "$2" 'd["summary"]["mean_official"]'
 }

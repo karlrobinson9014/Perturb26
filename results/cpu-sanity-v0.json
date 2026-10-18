@@ -1,0 +1,84 @@
+{
+ "summary": {
+  "manifest": "F:\\Perturb26\\bench\\manifests\\dev.json",
+  "attack": "v0",
+  "budget": 300.0,
+  "n": 2,
+  "mean_official": 0.95289029361191,
+  "median_official": 0.95289029361191,
+  "success_rate": 1.0,
+  "mean_official_on_success": 0.95289029361191,
+  "variant_disagreements": 0,
+  "reasons": {
+   "success": 2
+  },
+  "time_mean": 231.0475,
+  "time_p95": 238.584,
+  "time_max": 238.584,
+  "attack_config": {
+   "safety_margin": 1.0,
+   "kappa": 4.0,
+   "lr": 0.25,
+   "l1_init": 2.0,
+   "l1_up": 1.15,
+   "l1_down": 0.8,
+   "search_fraction": 0.65,
+   "prune_start_fraction": 0.5,
+   "novelty_pixels": 8,
+   "search_amp": true,
+   "seed": 0
+  },
+  "variants": [
+   "default"
+  ],
+  "git_sha": "f55741e",
+  "git_dirty": true,
+  "device": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+  "torch": "2.14.1+cpu",
+  "wall_seconds": 463.8
+ },
+ "records": [
+  {
+   "key": "20260922T053148Z-0003-r0",
+   "image_id": "f23223d15d55f288e288c985a44baa575bc525e879ecaec67e4c984fe89c014a",
+   "elapsed": 223.511,
+   "official": 0.963455278514077,
+   "max_variant": 0.963455278514077,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "margin": 4.699640274047852,
+   "norm": 0.003921598196029663,
+   "rmse": 0.0006916031707078218,
+   "est_score": 0.9634567591051506,
+   "est_margin": 4.699640274047852,
+   "nonzero": 28664,
+   "changed_pixels": 23447,
+   "steps": 156,
+   "alias_target": false,
+   "first_flip_step": 4
+  },
+  {
+   "key": "20260923T033553Z-0002-r0",
+   "image_id": "ef063128a9697c5dd893a8208f01d4a53e9a28b7c0946b241188b76c57bf160d",
+   "elapsed": 238.584,
+   "official": 0.9423253087097431,
+   "max_variant": 0.9423253087097431,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "margin": 1.0000100135803223,
+   "norm": 0.003921598196029663,
+   "rmse": 0.0012095695128664374,
+   "est_score": 0.9423267906725877,
+   "est_margin": 1.0000100135803223,
+   "nonzero": 80964,
+   "changed_pixels": 56519,
+   "steps": 159,
+   "alias_target": false,
+   "first_flip_step": 9
+  }
+ ]
+}

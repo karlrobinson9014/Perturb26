@@ -33,9 +33,16 @@ HOLDOUT_DIR="${HOLDOUT_DIR:-$HOME/perturb26-holdout}"
 
 echo "== benchmark data"
 PYTHONPATH="$ROOT" .venv/bin/python -m bench.fetch_data --manifest bench/manifests/dev.json --with-adv
-mkdir -p "$HOLDOUT_DIR"
-# Holdout lives outside the repo so loop agents never see it; only the reviewer is pointed at it.
-PYTHONPATH="$ROOT" .venv/bin/python -m bench.fetch_data --manifest "$HOLDOUT_DIR/holdout.json" --split test --count 128 --seed 2626
+mkdir -p "$HOLDOUT_DIR" && chmod 700 "$HOLDOUT_DIR"
+# Holdout lives outside the repo with a secret random seed, so it can't be regenerated from
+# the public dataset by a loop agent. Only the harness benchmarks it; agents and reviewers
+# see aggregate scores. For real isolation run agents as another Unix user (AGENT_RUN_PREFIX).
+if [[ ! -f "$HOLDOUT_DIR/holdout.json" ]]; then
+  HOLDOUT_SEED="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
+fi
+PYTHONPATH="$ROOT" .venv/bin/python -m bench.fetch_data --manifest "$HOLDOUT_DIR/holdout.json" --split test --count 128 \
+  --seed "${HOLDOUT_SEED:-0}"
+chmod -R go-rwx "$HOLDOUT_DIR"
 
 echo "== gates"
 bash harness/gate.sh

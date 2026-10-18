@@ -139,20 +139,29 @@ class Attacker:
         return _Candidate(q=q.clone(), est=est, margin=margin, flipped=flipped, nonzero=nonzero, changed_pixels=changed_pixels)
 
     def _novelty_seed(self, lo: torch.Tensor, hi: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Change ``novelty_pixels`` pixels, preferring ones outside the model's view."""
+        """Change ``novelty_pixels`` pixels, preferring ones outside the model's view.
+
+        Positions, channel and sign come from ``cfg.seed`` so that two miners running this
+        code (different seeds) never submit byte-identical images, which the validator zeroes.
+        """
         q = torch.zeros_like(lo)
         want = int(self.cfg.novelty_pixels)
         if want <= 0:
             return q
-        unseen = ~mask.any(dim=0)  # HW
+        gen = torch.Generator(device="cpu").manual_seed(int(self.cfg.seed))
+        unseen = (~mask.any(dim=0)).cpu()  # HW
         positions = unseen.nonzero(as_tuple=False)
+        positions = positions[torch.randperm(positions.shape[0], generator=gen)]
         if positions.shape[0] < want:
-            positions = torch.cat([positions, (~unseen).nonzero(as_tuple=False)], dim=0)
+            seen = (~unseen).nonzero(as_tuple=False)
+            positions = torch.cat([positions, seen[torch.randperm(seen.shape[0], generator=gen)]], dim=0)
         for y, x in positions[:want].tolist():
-            if hi[0, y, x] > 0:
-                q[0, y, x] = 1.0
-            elif lo[0, y, x] < 0:
-                q[0, y, x] = -1.0
+            c = int(torch.randint(0, lo.shape[0], (1,), generator=gen))
+            up_first = bool(torch.randint(0, 2, (1,), generator=gen))
+            for sign in ((1.0, -1.0) if up_first else (-1.0, 1.0)):
+                if (sign > 0 and hi[c, y, x] > 0) or (sign < 0 and lo[c, y, x] < 0):
+                    q[c, y, x] = sign
+                    break
         return q
 
     # ------------------------------------------------------------------ main

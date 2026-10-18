@@ -1,0 +1,10 @@
+# Allowlist: the only paths a loop agent's iteration may add, change, rename or delete.
+# Anything else (new root files such as sitecustomize.py or conftest.py, config files,
+# harness, prompts, bench) discards the iteration. protected_paths.txt carves exceptions out of these.
+miner26/*
+tests/*
+tools/*
+notes/*
+results/*
+status/STATUS.md
+status/backlog.md

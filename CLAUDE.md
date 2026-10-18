@@ -8,17 +8,19 @@ formula in `notes/scoring.md`. The repo also contains the autonomous loop that i
 | path | what | who edits |
 |---|---|---|
 | `miner26/` | product: `attack.py` (the attack), `scoring.py` (score model), `neuron.py` (live miner), `imaging.py` | loop agents |
-| `bench/` | `run_bench.py` (headline metric), `official.py` (upstream verifier), `fetch_data.py`, `manifests/` | humans only |
+| `bench/` | `run_bench.py` (attack phase), `score.py` (authoritative scorer, separate process), `official.py` (upstream verifier), `fetch_data.py`, `manifests/` | humans only |
 | `tests/contract/` | invariants: score parity, admissibility | humans only |
 | `tests/` (other) | unit tests for new code | loop agents |
 | `tools/` | analysis scripts (competitor scores, probes) | loop agents |
 | `notes/` | knowledge base: scoring, timing, competition, ideas, research log, harness proposals | loop agents |
 | `status/STATUS.md`, `status/backlog.md` | current state, prioritised work | loop agents |
+| `results/` | bench outputs; `results/harness/` is the harness's own | agents (except `harness/`) |
 | `status/best.json`, `results.tsv`, `iterations.tsv`, `reviews/` | accepted best, ledgers, verdicts | harness only |
 | `harness/`, `prompts/` | the loop (pm2 + claude CLI), prompts | humans only |
 | `upstream/` | pinned Perturb checkout (git submodule); the source of truth for scoring | never |
 
-Protected paths are listed in `harness/protected_paths.txt`; touching one discards the iteration.
+Agents may change only what `harness/agent_paths.txt` allows minus `harness/protected_paths.txt`;
+anything else (renames and new files included) discards the iteration.
 
 ## Commands (GPU box, repo root, `source .venv/bin/activate`, `export PYTHONPATH=$PWD`)
 - tests: `python -m pytest -q tests`

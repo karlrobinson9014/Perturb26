@@ -15,8 +15,9 @@ next iteration can pick up.
 ## 2. Do the item
 - Implement it completely, with tests where it touches behaviour. No stubs, no TODO placeholders.
 - Keep the miner's contract: L-inf exactly 1/255 on the uint8 grid, the deadline is respected, and
-  `tests/contract/` passes. You may not edit protected paths (`harness/protected_paths.txt`);
-  the harness discards the whole iteration if you do. If a protected file needs a change,
+  `tests/contract/` passes. You may only change paths listed in `harness/agent_paths.txt` and not
+  excluded by `harness/protected_paths.txt`. The harness discards the whole iteration otherwise
+  (renames and new files count too). If something outside needs a change (bench, harness, prompts),
   write the proposal in `notes/harness_proposals.md` instead.
 - Run what the harness will run: `bash harness/gate.sh` (pytest + import + smoke bench).
   The GPU is shared with nothing else during your iteration; long benches are fine when the item needs them.

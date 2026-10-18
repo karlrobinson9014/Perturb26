@@ -8,8 +8,8 @@ Only the needed columns are range-read from the Hub.
 
     # dev set used by the loop (manifest is committed, images are not)
     python -m bench.fetch_data --manifest bench/manifests/dev.json --split validation --count 64 --seed 26
-    # holdout used only by the reviewer; lives OUTSIDE the repo
-    python -m bench.fetch_data --manifest "$HOLDOUT_DIR/holdout.json" --split test --count 128 --seed 2626
+    # holdout: benchmarked only by the harness; lives OUTSIDE the repo, secret seed (setup_box.sh)
+    python -m bench.fetch_data --manifest "$HOLDOUT_DIR/holdout.json" --split test --count 128 --seed <secret>
 
 If the manifest exists its rows are re-downloaded and sha256-verified;
 otherwise shards are drawn with ``--seed`` at the current revision and the
@@ -88,7 +88,7 @@ def main() -> int:
         else:
             data_dir = manifest_path.parent / "data"
         manifest = {
-            "dataset": DATASET, "revision": revision, "split": args.split, "seed": args.seed,
+            "dataset": DATASET, "revision": revision, "split": args.split,
             "shards_at_creation": len(shards),
             "data_dir": os.path.relpath(data_dir, manifest_path.parent.resolve()).replace("\\", "/"),
             "items": [{"shard": shard, "row": 0} for shard in chosen],

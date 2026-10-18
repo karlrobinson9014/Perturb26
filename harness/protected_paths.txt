@@ -1,17 +1,10 @@
-# Paths the loop agent may not change. Any diff touching them is discarded by the
-# harness before benchmarking. Humans change these on main; the loop merges main in.
-upstream
-.gitmodules
-harness/*
-prompts/*
-CLAUDE.md
-bench/official.py
-bench/run_bench.py
-bench/fetch_data.py
-bench/manifests/*
+# Exceptions inside the allowlist (agent_paths.txt) that the agent still may not touch.
 tests/contract/*
 tests/conftest.py
-status/results.tsv
-status/best.json
-status/iterations.tsv
-status/reviews/*
+tests/__init__.py
+tests/*.ini
+tests/*.cfg
+tests/*.toml
+tests/*/conftest.py
+results/competitors-*
+results/harness/*

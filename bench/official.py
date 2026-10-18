@@ -10,23 +10,31 @@ reliable flip. The official per-image score is the *minimum* over variants.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
+import io
 from dataclasses import asdict
 from types import SimpleNamespace
 from typing import Any, Iterator
 
 import torch
+from PIL import Image
 
-from miner26._upstream import ensure_bittensor_importable
-
-ensure_bittensor_importable()
-
+from bench import _paths  # noqa: F401  (upstream on sys.path; never import miner26 here)
 from neurons.validator import ChallengeSpec, PerturbValidator  # noqa: E402
 from perturbnet import constants as C  # noqa: E402
 from perturbnet.image_io import decode_image_b64  # noqa: E402
 from perturbnet.model import normalize_prediction_label, predict_label  # noqa: E402
 
 VARIANTS = ("default", "tf32_off", "tf32_on")
+
+
+def clean_task_b64(raw: bytes) -> str:
+    """The clean task image as the validator holds it: upstream ``image_url_to_b64`` after the GET."""
+    image = Image.open(io.BytesIO(raw)).convert("RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 @contextlib.contextmanager

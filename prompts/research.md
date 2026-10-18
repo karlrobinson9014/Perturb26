@@ -41,9 +41,13 @@ If the harness discards the code (no gain over best + MIN_GAIN, or the reviewer 
 your notes are kept and the next iteration builds on what you learned.
 
 ## Rules (the harness and the reviewer enforce these)
-- Don't edit protected paths (`harness/protected_paths.txt`): bench scorer and runner, manifests,
-  contract tests, harness, prompts, ledgers. Doing so discards the iteration.
-- Don't read or look for the holdout set (it is outside the repo) or anything under `$HOLDOUT_DIR`.
+- Change only paths in `harness/agent_paths.txt` that `harness/protected_paths.txt` doesn't exclude
+  (`miner26/`, non-contract `tests/`, `tools/`, `notes/`, `results/` except `results/harness/`,
+  `status/STATUS.md`, `status/backlog.md`). Anything else, including new root files, discards the iteration.
+- Scoring runs in a separate process that never imports `miner26/`. Don't patch upstream modules, `bench`,
+  timing or global torch settings from the attack; the reviewer rejects it.
+- Don't look for the holdout set. You see only its aggregate score in `status/best.json`.
 - No benchmark special-casing: no per-image lookup tables, no hashing of dev images, no tuning on
   image identity. The miner must work on unseen live tasks. The reviewer rejects overfitting.
-- The live miner has only the wall clock. Never exceed `--budget`.
+- The live miner has only the wall clock. The harness rejects any bench whose per-image time or
+  total attack time exceeds the budget plus `TIME_SLACK`.

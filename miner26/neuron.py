@@ -16,6 +16,7 @@ moment minus a measured upload/submit reserve (EMA).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -34,13 +35,19 @@ SUBMIT_BY_SECONDS = float(os.getenv("PERTURB26_SUBMIT_BY_SECONDS", "34"))
 UPLOAD_RESERVE_SECONDS = float(os.getenv("PERTURB26_UPLOAD_RESERVE_SECONDS", "5"))
 
 
-def _attack_config_from_env() -> AttackConfig:
+def _attack_config_from_env(hotkey: str = "") -> AttackConfig:
     raw = os.getenv("PERTURB26_ATTACK_CONFIG", "").strip()
-    return AttackConfig(**json.loads(raw)) if raw else AttackConfig()
+    overrides = json.loads(raw) if raw else {}
+    if hotkey and "seed" not in overrides:
+        # Per-hotkey seed: identical responses from two miners are both zeroed.
+        overrides["seed"] = int(hashlib.sha256(hotkey.encode("utf-8")).hexdigest()[:8], 16)
+    return AttackConfig(**overrides)
 
 
-def _task_boundary(now: float, cadence: int) -> float:
-    return float(int(now // max(1, cadence)) * max(1, cadence))
+def _task_boundary(now: float, cadence: int, early_tolerance: float = 5.0) -> float:
+    """Boundary of the task fetched at ``now``; tolerates seeing it slightly before the boundary."""
+    cadence = max(1, cadence)
+    return float(int((now + early_tolerance) // cadence) * cadence)
 
 
 def dry_run(budget: float) -> int:
@@ -83,7 +90,8 @@ def run_miner() -> int:
     class Perturb26Miner(PerturbMiner):
         def __init__(self, config) -> None:
             super().__init__(config)
-            self.attacker = Attacker(self.model, self.device, _attack_config_from_env())
+            hotkey = str(getattr(self.wallet.hotkey, "ss58_address", ""))
+            self.attacker = Attacker(self.model, self.device, _attack_config_from_env(hotkey))
             self.upload_reserve = UPLOAD_RESERVE_SECONDS
 
         def _process_task(self, *, task_id: str, image_url: str) -> None:

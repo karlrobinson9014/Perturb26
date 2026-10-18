@@ -36,14 +36,23 @@ Each iteration is a fresh headless session: `claude -p --output-format stream-js
 1. **sync**: fetch, rebase the `loop` branch, merge `main` (human edits to the harness and prompts land there).
 2. **agent**: build mode does the first open `[build]` backlog item; research mode runs one experiment.
    The agent commits on `loop` and updates notes and status.
-3. **guards**: protected-path check, then `harness/gate.sh` (pytest, import, smoke bench). The harness runs them, not the agent.
-4. **measure**: if `miner26/` changed, the harness runs the full dev bench itself.
-5. **review**: on a gain above `MIN_GAIN`, a separate `claude -p` reviewer session (`prompts/review.md`)
-   checks the diff for overfitting, re-runs the tests, runs the **holdout** (128 images, outside the repo)
-   and writes a verdict. The harness cross-checks the verdict against the raw holdout file.
-6. **decide**: accept means `status/best.json` is updated, `loop` is merged into `main` with tag
-   `best-iterN`, and both are pushed (with `PUSH=1`). Discard means the code is reset and the notes are kept.
+3. **guards** (run by the harness, not the agent):
+   - changed paths must be on the allowlist (`harness/agent_paths.txt`, minus `protected_paths.txt`), renames included;
+   - the venv fingerprint must be unchanged;
+   - `harness/gate.sh`: contract tests under the harness's pytest config, other tests, import, smoke bench.
+4. **measure**: if `miner26/` changed, the harness runs the full dev bench. Scoring happens in a separate
+   process (`bench/score.py`) that never imports agent code. A bench that overruns the time budget is rejected.
+5. **holdout**: on a dev gain above `MIN_GAIN`, the harness benchmarks the holdout (128 images, outside the
+   repo, secret seed). It must stay within `HOLDOUT_TOL` of the best holdout ever accepted.
+6. **review**: a separate `claude -p` reviewer session (`prompts/review.md`) audits **everything not yet on
+   `main`**, re-runs the gates, reproduces 16 dev images, and reads the holdout digest. It has veto power.
+7. **decide**: accept means `status/best.json` is updated, `loop` is merged into `main` with tag
+   `best-iterN-<sha>`, and both are pushed (with `PUSH=1`). Discard means the code is reset and the notes are kept.
    Every outcome goes to `status/results.tsv`.
+
+Isolation: with an empty `AGENT_RUN_PREFIX`, agents run as the harness user, so the guards stop
+mistakes and casual gaming but not a determined agent (it could read the holdout). For real
+isolation, run agents as a separate Unix user (see `harness/loop.env.example`).
 
 The loop stops on `STOP`, `MAX_ITERS`, `MAX_COST_USD`, or when dev and holdout both reach `TARGET_SCORE`.
 
