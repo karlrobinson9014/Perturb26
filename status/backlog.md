@@ -21,7 +21,7 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   ceiling); the attack must still respect the deadline. Unit test it on TinyNet.
 - [ ] [build] `tools/leaderboard.py` (needs bittensor + NETUID): list validators (permit, stake > 10k), GET
   /leaderboard/<hotkey>, write the top-10 avgScore per validator plus a stake-weighted top list to
-  status/leaderboard.json. [blocked: NETUID not known yet; ask in STATUS.md]
+  status/leaderboard.json. NETUID is 26 (finney).
 
 ## Research directions (most promising first)
 - [ ] [research] Margin-sparsity trade-off: top competitors reach ~1% nonzero with margin >= 10. Tune kappa,

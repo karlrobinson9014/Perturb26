@@ -1,6 +1,7 @@
 # Status
 
 ## Goal
+Subnet: Perturb, NETUID 26 on finney.
 Take scanning rank 1 on Perturb: mean official score above every competitor, consistently.
 Competitor envelope on dev = 0.9784 mean best-per-image, 0.9858 max (`notes/competition.md`).
 Ceiling 0.99303. Loop stop target `TARGET_SCORE` = 0.993 (harness/loop.env).
