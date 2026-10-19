@@ -28,10 +28,12 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   5/5 consecutive live tasks scored, 5/5 success, official mean 0.97685 (min 0.96875, max 0.98328), 0 variant
   disagreements; task seen at boundary + 2.7 s median (max 3.0), attack ~25 s, done at + 28.7 s (deadline 29).
   Also fixed: bittensor muted the `miner26` logger (level CRITICAL), so the dry run and the live miner logged nothing.
-- [ ] [build] Confirm live-miner logging: after the `_setup_miner_logging` fix, check the pm2 log of perturb26-miner
+- [ ] [build] [blocked: no wallet in ~/.bittensor/wallets and no perturb26-miner pm2 app on the GPU box (iter 6)] Confirm live-miner logging: after the `_setup_miner_logging` fix, check the pm2 log of perturb26-miner
   shows `Submitted task=... since_boundary=...` lines (needs the wallet / running miner; not testable in a dry run).
-- [ ] [build] v1 regression test on the GPU: graph-captured lanes give the same margins and gradients as the
-  eager `_Lanes` on a real dev image (skip when CUDA is unavailable).
+- [x] [build] v1 regression test on the GPU (2026-10-19, `tests/test_graph_lanes_gpu.py`): on EfficientNetV2-L and the
+  first crop-path dev image, with 4 lanes (spec modes, last lane targeted) and sparse +-1 q, graph `check` and `grad`
+  are bit-identical to the eager `_Lanes` (margin diff 0.0, gradient cosine 1.0, relative error 0.0); replays do not
+  depend on earlier replays. Skips without CUDA, cached weights or dev data.
 - [ ] [build] Early exit in the attack when the estimate cannot improve (e.g. alias images already at the
   ceiling); the attack must still respect the deadline. Unit test it on TinyNet.
 - [x] [build] (file exists since c7988d7; verify it runs) `tools/leaderboard.py` (needs bittensor + NETUID): list validators (permit, stake > 10k), GET

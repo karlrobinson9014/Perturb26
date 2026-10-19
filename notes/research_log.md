@@ -141,3 +141,10 @@ did not help because the logger level, not the handler, was the problem. Fix: `_
 `miner26` logger its own stderr handler at INFO with propagate off, called in the dry run and after
 `PerturbMiner.__init__`. Test: `tests/test_neuron_dry_run.py`. Verified: `--dry-run --budget 5` prints again
 (task 1792421640-..., official 0.97952). The live-miner side still needs a check in the pm2 log (backlog).
+
+## 2026-10-19 iter 6: CUDA-graph lanes vs eager lanes (regression test)
+`python -m pytest -q tests/test_graph_lanes_gpu.py` (RTX 4090, torch 2.12.0+cu130): EfficientNetV2-L, first crop-path dev
+image, B=4 lanes with the default spec modes and the last lane targeted at class clean+1, sparse +-1 q (density 0-5 %
+per lane). fp32 `check`: margins and argmax identical (max diff 0.0). fp16 `grad`: margins identical, gradient cosine
+1.0, relative L2 error 0.0. So capturing with `cudnn.benchmark = True` did not change the numerics here; the graph path
+is a pure speed-up. Test tolerances keep slack (margin 1e-3 fp32 / 0.05 fp16, cosine > 0.999) for other GPUs.
