@@ -28,3 +28,4 @@ Ceiling 0.99303. Loop stop target `TARGET_SCORE` = 0.993 (harness/loop.env).
 - 2026-10-19 iter 6 (build): live-miner logging check blocked (no wallet / miner on the box); added GPU regression test `tests/test_graph_lanes_gpu.py`: CUDA-graph lanes bit-identical to eager on EfficientNetV2-L + a dev image (margins, argmax, gradients); gates pass (smoke 3/3, mean 0.96880 at budget 8).
 - 2026-10-19 iter 201 (build): early exit when no candidate can beat the found one (alias images stop after 1 step at the ceiling); `tests/test_attack_early_exit.py`; gates pass, smoke 0.96927 (budget 8).
 - 2026-10-19 iter 202 (research): greedy prune after the search: 16-img 0.97300 vs 0.97365, reverted; candidates are already tight at margin 10 (research_log).
+- 2026-10-19 iter 203 (research): batched fp32 checks every 8 steps (`check_every`): 302 -> 437 steps/image, dev 0.97529 vs best 0.97484, 64/64 success, 0 disagreements (`results/dev-iter203-agent.json`).

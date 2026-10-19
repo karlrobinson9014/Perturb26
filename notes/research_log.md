@@ -185,3 +185,28 @@ Result (negative, code reverted; nothing in miner26/ changed):
   293/256) in two runs here: the class a run lands in varies a lot between runs at the same config, so per-image
   variance from class discovery is large (~0.006 on that image). More/diverse discovery (restarts, more lanes) is
   still the lever; small polish ideas are below MIN_GAIN (0.002).
+
+## 2026-10-19 iter 203: deferred fp32 checks (more search steps per budget)
+Hypothesis: a v1 step is ~73 ms (seed bench image 1: 294 steps in 21.5 s), but the B=4 CUDA-graph fp16 grad is only
+44.3 ms; the fp32 check graph costs 32.5 ms and runs on almost every step, because during ISTA the projected
+estimate creeps up nearly every step (scratch profile, RTX 4090, 50 replays each). Keeping, per lane, the best
+*projected* (fp16-margin) candidate since the last check and verifying all lanes' pending candidates in one
+batched fp32 check every K steps (and before re-target / at the end) should give ~40 % more ISTA steps (K=4:
+~52 ms/step) at nearly the same candidate quality. ISTA lanes were seen to plateau around ~300 steps (research_log
+2026-10-19), and the re-targeted lanes get only ~190 of the 294 steps now, so they should gain most.
+Plan: `check_every` in AttackConfig; `--limit 16` with K=1 (current behaviour) vs 4 vs 8, then the full dev bench.
+Result (code kept in this commit, `check_every = 8` default):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '{"check_every": K}' --out results/dev16-iter203-kK.json`),
+  vs the same images in the seed bench (0.97365):
+  | K | mean | steps (mean) | success | disagreements | t max |
+  |---|---|---|---|---|---|
+  | 1 (old behaviour) | 0.97341 | 302 | 16/16 | 0 | 21.80 s |
+  | 4 | 0.97393 | 408 | 16/16 | 0 | 21.82 s |
+  | 8 | 0.97404 | 435 | 16/16 | 0 | 21.83 s |
+- Full dev, K=8 (`python -m bench.run_bench --out results/dev-iter203-agent.json`): **mean 0.97529** vs best 0.97484
+  (+0.00045), 64/64 success, 0 variant disagreements, time p95 21.82 s / max 21.85 s, steps mean 437 (seed ~300),
+  higher than the seed on 60/64 images, nonzero median 44.2k.
+- Conclusion: +44 % steps gives a consistent but small gain (+0.0005, probably below MIN_GAIN 0.002). It confirms
+  that the lanes are near their plateau and the remaining gap is the class. The freed time is the useful part: it
+  is the budget for more lanes (B=8 ~75 ms/grad) or more re-target rounds, which were too costly with per-step checks.
+- Next: B=8 lanes (4 discovery + 4 targeted) with check_every=8; or a second re-target round at ~60 % of the budget.

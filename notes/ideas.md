@@ -35,7 +35,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 ## Speed (more steps per budget)
 - [ ] channels_last + fp16/bf16 autocast for the search; keep fp32 checks.
 - [ ] `torch.compile` / CUDA graphs on the fixed-size forward+backward (shapes vary per image; cache per shape).
-- [ ] Skip the fp32 check when the amp margin is far above `safety_margin` (check only the final few).
+- [x] Defer fp32 checks: per-lane best projected candidate, verified in one batch every K steps: iter 203, K=8 +44 % steps (302 -> 437), dev 0.97529 vs 0.97484 (+0.00045, 60/64 images up).
+- [ ] With the freed time: B=8 lanes or a second re-target round (the check was ~40 % of the step before iter 203).
 - [ ] Early exit once the estimate is at the ceiling (alias images); saves GPU, no score effect.
 
 ## Image geometry
