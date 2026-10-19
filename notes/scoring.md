@@ -59,4 +59,12 @@ The validator runs fp32 on its own GPU, with whatever TF32/cuDNN algorithms it p
 ## Ranking and emissions (why consistency matters)
 - `avgScore` = mean over the last 300 rounds (about 10 h). A miss or failure is 0 for that round.
   One zero costs ~0.0032 of average, about the size of the gaps between top miners.
-- Only the top 3 by stake-weighted consensus rank get scanning emissions: 75 / 20 / 5 % of 80 %.
+- **A miner's avgScore is 0 until it has a full window** (`upstream/perturbnet/leaderboard_payload.py`
+  `avg_score`: `len(history) < window -> 0`; window = min(300, longest miner history)). A newly registered
+  hotkey therefore ranks nowhere for its first ~300 rounds (~10 h).
+- Only the top 3 by stake-weighted consensus rank get scanning emissions: 75 / 20 / 5 % of 80 %
+  (60 / 16 / 4 % of miner emission). The daily training-track winner gets the other 20 %
+  (whitepaper: fine-tune EfficientNetV2-L for robustness, publish to HF, commit on chain).
+- Registration (finney, 2026-10-19): burn 0.1 TAO, 256/256 slots full, immunity 5000 blocks (~16.7 h).
+  10 h of zero average leaves ~6.7 h of immunity to reach top 3 (everyone else earns 0 and is prunable).
+  So register only once the miner beats the competitor envelope on dev and holdout.

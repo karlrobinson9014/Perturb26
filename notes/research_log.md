@@ -17,3 +17,11 @@ Each entry: `## <date> iter <N>: <title>`, then hypothesis, plan, result (number
   The second image: margin 1.00 (exactly the safety floor), 80,964 nonzero values, 159 steps, first flip at step 9.
   Reading: v0 flips easily at 1/255; the gap to the leaders is margin (+0.03 available) and sparsity.
   Raw: results/cpu-sanity-v0.json.
+
+## 2026-10-19: GPU baselines (RTX 4090, 22 s budget, all 3 variants)
+- `python -m bench.run_bench --out results/dev-v0.json`: mean 0.9536, success 64/64, p95 20.8 s, max 22.3 s,
+  0 variant disagreements. Margins mostly 1-4 logits, nonzero 10k-120k values: far from the competitor
+  envelope (best responses: margin ~10.0, median 3.1 % nonzero; `results/competitors-dev.json`).
+- `python -m bench.run_bench --attack baseline --out results/dev-baseline.json`: mean 0.3371, 33/64 success.
+- Throughput (eager, B=1, 480x480): fwd+bwd ~125 ms in fp32, fp16 or bf16 alike; channels_last is slower.
+  Looks launch-bound (many small kernels), so batching and CUDA graphs / torch.compile should pay off.
