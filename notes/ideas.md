@@ -3,6 +3,7 @@
 Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discarded`.
 
 ## Target class (highest value, see research_log 2026-10-19)
+- [ ] Measure run-to-run class variance (same image, several seeds/timings): iter 202 saw image 3 at 0.9776 vs 0.9709 between runs; if large, more independent discovery lanes / restarts pay directly.
 - [ ] B=8 lanes (9.4 ms/img-step): 4 discovery objectives + 4 targeted lanes fed from them.
 - [ ] Re-target several times (e.g. at 25 %, 45 %, 65 % of the budget), each time replacing the worst lanes.
 - [ ] Discovery lanes without L1 at higher lr (they only need to reveal a class, not a sparse solution).
@@ -25,6 +26,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] `search_fraction`: time split between search and prune.
 
 ## Prune
+- [x] Greedy first-order prune of the best candidate in the last 20 % of the budget (4 drop sizes per batched fp32 check): iter 202, 16-img 0.97300 vs 0.97365, discarded. Candidates are already tight at margin 10; only the overshoot above 10 is recoverable (~1e-5..4e-4/image).
+- [ ] Clip margin overshoot only: if the final best has margin > 10.1, a few cheap prune rounds (no search time lost) recover up to ~4e-4 on such images.
 - [ ] Batched prune: evaluate several drop fractions in one forward batch.
 - [ ] Re-gradient after each accepted prune (already done) vs swap moves (drop k, add k elsewhere).
 - [ ] Final polish: try flipping signs of the weakest entries instead of dropping them.

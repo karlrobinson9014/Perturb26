@@ -158,3 +158,30 @@ is a pure speed-up. Test tolerances keep slack (margin 1e-3 fp32 / 0.05 fp16, co
   `bash harness/gate.sh` smoke 3/3, mean official 0.96927 at budget 8 (previous gate run 0.96880, noise).
 - Test: `python -m pytest -q tests/test_attack_early_exit.py` (alias TinyNet exits after 1 step with the ceiling
   estimate; plain TinyNet runs to its deadline).
+
+## 2026-10-19 iter 202: greedy prune phase after the search
+Hypothesis: the ISTA lanes stop at margin ~10.0 with an L1-balanced support, not a minimal one (seed bench
+`results/harness/dev-seed-1223aac.json`: margin median 10.02, 54/64 >= 10; RMSE median 0.00086 vs the leaders'
+0.00069). ISTA plateaus by ~300 steps (research_log), so the last ~20 % of the budget is better spent on a
+first-order greedy prune of the best fp32 candidate: gradient of (l_cls - l_true) at the candidate, drop the
+nonzero values with the smallest contribution g*q, test 4 drop sizes in one batched fp32 check, keep the best
+estimate (which already trades margin below 10 against RMSE), adapt the drop sizes. It only accepts improvements,
+so it cannot lower the estimate; the risk is the lost search time. The iter-0 "overshoot then prune" failure was
+pruning from margin 12-14 with large first-order steps; this prunes from ~10 in small, verified steps.
+Plan: `--limit 16` with prune at 0.8 / 0.7 of the budget vs off, then the full dev bench.
+Result (negative, code reverted; nothing in miner26/ changed):
+- `python -m bench.run_bench --limit 16 --out results/dev16-iter202-p08.json` (prune from 0.8 of the budget):
+  mean 0.97300, 16/16 success, 0 variant disagreements, time mean 18.9 s (prune stops early), vs the same 16 images
+  in the seed bench 0.97365. Worse on 14/16 images (lost search time; image 3 landed in a worse class: 80k vs 41k values).
+- Trace (scratch script, images 1 and 3, 22 s): the best candidate is already at margin 9.99-10.0 and *every*
+  greedy removal by smallest g*q lowers the fp32 margin: dropping 0.5 % of the values costs 0.37 logit (img 1) and
+  dropping 0.06 % (16 values) is break-even. Score per removed value ~2e-7 vs 0.003 per logit, so a removal must cost
+  < ~7e-5 logit; first-order picks don't achieve that. Image 1: 3 accepts, +4e-6 total; image 3 (from margin 10.15):
+  15 accepts, ~+4e-4, i.e. only the margin overshoot above 10 is recoverable.
+- Conclusion: the ISTA lanes' L1 schedule (lam_up/lam_down around target_margin 10.05) already leaves a locally tight
+  support at margin 10. Pure removal is redundant with ISTA; only swap moves (= ISTA itself) or a different basin
+  (class / support) can lower RMSE. Confirms the iter-0 view that the gap is the class/basin, not the final polish.
+- Side observation: image 3 ended at 0.97759 (41.5k values) in the seed bench but 0.9717 / 0.9709 (80-86k, classes
+  293/256) in two runs here: the class a run lands in varies a lot between runs at the same config, so per-image
+  variance from class discovery is large (~0.006 on that image). More/diverse discovery (restarts, more lanes) is
+  still the lever; small polish ideas are below MIN_GAIN (0.002).
