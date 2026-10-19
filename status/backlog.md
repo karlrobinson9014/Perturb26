@@ -34,8 +34,10 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   first crop-path dev image, with 4 lanes (spec modes, last lane targeted) and sparse +-1 q, graph `check` and `grad`
   are bit-identical to the eager `_Lanes` (margin diff 0.0, gradient cosine 1.0, relative error 0.0); replays do not
   depend on earlier replays. Skips without CUDA, cached weights or dev data.
-- [ ] [build] Early exit in the attack when the estimate cannot improve (e.g. alias images already at the
-  ceiling); the attack must still respect the deadline. Unit test it on TinyNet.
+- [x] [build] Early exit in the attack when the estimate cannot improve (2026-10-19, iter 201): `Attacker.run`
+  computes the per-image ceiling (seed-only nonzero count, margin 10, seed pixels) and stops once a kept candidate
+  reaches it (`info["early_exit"]`). `tests/test_attack_early_exit.py`: alias TinyNet (always 264 -> true 474)
+  stops after 1 step with the ceiling estimate; ordinary TinyNet runs to the deadline. Gate smoke unchanged (0.96927).  The live miner already submits as soon as `run` returns (`neuron.py` `_process_task`), so nothing else is needed.
 - [x] [build] (file exists since c7988d7; verify it runs) `tools/leaderboard.py` (needs bittensor + NETUID): list validators (permit, stake > 10k), GET
   /leaderboard/<hotkey>, write the top-10 avgScore per validator plus a stake-weighted top list to
   status/leaderboard.json. NETUID is 26 (finney).

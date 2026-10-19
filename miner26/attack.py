@@ -334,8 +334,13 @@ class Attacker:
             outside = torch.zeros_like(seed_full)
         n_out = int((outside != 0).sum().item())
         px_out = int((outside != 0).any(dim=0).sum().item())
+        # Best estimate any candidate can reach: the seed values are always kept, so the fewest
+        # changes are the seed itself (at least one value, for an admissible L-inf), at a saturated margin.
+        seed_nz = max(1, int((seed_full != 0).sum().item()))
+        seed_px = max(1, int((seed_full != 0).any(dim=0).sum().item()))
+        ceiling = self._estimate(seed_nz, total, 10.0, seed_px)
         info: dict[str, Any] = {"path": "crop" if window is not None else "generic",
-                                "alias_target": true_index != clean_index}
+                                "alias_target": true_index != clean_index, "early_exit": False}
 
         lanes.t.fill_(true_index)
         for b, (mode, tau) in enumerate(self.lane_spec):
@@ -396,6 +401,9 @@ class Attacker:
                             best[b] = _Best(est, m32[b], q[b].clone(), arg32[b])
                     elif fallback is None or m32[b] > fallback.margin:
                         fallback = _Best(est, m32[b], q[b].clone(), arg32[b])
+                if max((x.est for x in best if x is not None), default=0.0) >= ceiling - 1e-9:
+                    info["early_exit"] = True  # e.g. alias images: the seed alone already scores the ceiling
+                    break
             above = margin >= cfg.target_margin
             lam = torch.where(above & ~started, torch.full_like(lam, cfg.lam0), lam)
             lam = torch.where(above & started, lam * cfg.lam_up, lam)

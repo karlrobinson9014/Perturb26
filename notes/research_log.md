@@ -148,3 +148,13 @@ image, B=4 lanes with the default spec modes and the last lane targeted at class
 per lane). fp32 `check`: margins and argmax identical (max diff 0.0). fp16 `grad`: margins identical, gradient cosine
 1.0, relative L2 error 0.0. So capturing with `cudnn.benchmark = True` did not change the numerics here; the graph path
 is a pure speed-up. Test tolerances keep slack (margin 1e-3 fp32 / 0.05 fp16, cosine > 0.999) for other GPUs.
+
+## 2026-10-19 iter 201 (build): early exit at the per-image ceiling
+- `Attacker.run` now stops as soon as a kept (fp32, >= safety_margin) candidate scores the per-image ceiling:
+  `_estimate(seed nonzero, total, margin 10, seed pixels)`. The novelty seed is always kept, so no candidate can
+  beat that. In practice this fires on label-alias images (clean 264 -> validator true 474): the seed-only
+  candidate at step 1 already has a huge margin. `info["early_exit"]` records it.
+- Ordinary images never reach the ceiling (they need thousands of changed values), so their behaviour is unchanged:
+  `bash harness/gate.sh` smoke 3/3, mean official 0.96927 at budget 8 (previous gate run 0.96880, noise).
+- Test: `python -m pytest -q tests/test_attack_early_exit.py` (alias TinyNet exits after 1 step with the ceiling
+  estimate; plain TinyNet runs to its deadline).
