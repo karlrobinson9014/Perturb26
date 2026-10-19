@@ -81,3 +81,17 @@ worst lanes with the next candidates; retired lanes' candidates stay eligible.
 Literature (notes/literature.md): dominant-class UAP papers suggest a global prior; dev competitors show none (best
 class 151 on 4/64 images), so no prior. MALT-style linear target choice already failed here (rank 129-605).
 Plan: `tools/class_eval.py` (est only, same 16 images as results/dev16-v1.json) for configs, then the full dev bench.
+
+## 2026-10-19 iter 2 (build): competitor proxy on GPU under all numeric variants
+`python -m tools.competitor_scores --variants default,tf32_off,tf32_on --out results/competitor-variants-dev.json`
+(RTX 4090, 64 dev images, 336 dataset submissions; the tool now keeps per-variant score/margin per response).
+- Same aggregate as the CPU run: mean best-per-image 0.97837, median 0.97917, max 0.98584.
+- **0 variant disagreements** on 336 responses; largest score spread between variants 2.8e-5. Even responses
+  with margin 0.009 pass under all three variants on this GPU (selection bias: the dataset keeps responses that
+  passed at submission). TF32 numerics do not separate competitors here.
+- Best response per image: min-over-variants margin median 9.994, p10 9.98, max 10.03; only 13/64 >= 10 and 1 below 2
+  (1.57). The leaders stop exactly at the saturation point and spend nothing beyond it.
+- vs our seed bench (`results/harness/dev-seed-1223aac.json`, 0.97484): our margin median 10.02 (54/64 >= 10),
+  so margin is not the gap. Best competitor beats us on **64/64** images by mean 0.0035; their best responses'
+  RMSE median 0.00069 vs ours 0.00086 (their nonzero fraction median 3.1 %). The gap is RMSE / sparsity at the
+  same margin (and, per iter 1, the class that makes low RMSE possible).

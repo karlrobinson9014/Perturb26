@@ -21,3 +21,4 @@ Ceiling 0.99303. Loop stop target `TARGET_SCORE` = 0.993 (harness/loop.env).
 ## Recent iterations
 - 2026-10-19 iter 0 (setup session): scaffold, v0 attack, harness, competitor proxy 0.9784.
 - 2026-10-19 (setup session): GPU baselines, CUDA-graph v1 attack 0.9738 on 16 dev images, class-choice finding, operator dashboard.
+- 2026-10-19 iter 2 (build): competitor proxy on GPU, 3 variants: 0/336 disagreements, leaders' margins ~9.99, their RMSE 0.00069 vs ours 0.00086; gap 0.0035, they win 64/64 (`results/competitor-variants-dev.json`).

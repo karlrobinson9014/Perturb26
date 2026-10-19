@@ -39,3 +39,13 @@ Implications:
 - 0.993 (the ceiling) would need RMSE ~ 0 *and* a 10-logit margin on every image; nothing in the data
   comes near. Treat it as the asymptote, not a milestone.
 - Lever ranking from the data: (1) never fail, (2) margin >= 10 cheaply, (3) sparsity to ~1% or below.
+
+## Numeric variants and margins (GPU, 2026-10-19)
+`python -m tools.competitor_scores --variants default,tf32_off,tf32_on --out results/competitor-variants-dev.json`
+(RTX 4090). Aggregates are unchanged from the CPU run (0.97837 mean best-per-image).
+- **No response fails under any variant**: 0 disagreements on 336, max score spread between variants 2.8e-5,
+  even at margins of 0.009. Thin margins are not where competitors lose points.
+- Best response per image: margin (min over variants) median 9.994, p10 9.98, max 10.03, 13/64 at >= 10, one
+  at 1.57. They stop right at the 10-logit saturation and put everything else into sparsity.
+- Against our seed (0.97484): our margins are as high (median 10.02), yet the best competitor wins 64/64
+  images by mean 0.0035, with RMSE median 0.00069 vs our 0.00086. The gap is RMSE at a saturated margin.

@@ -10,8 +10,9 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   (29 below_min_ssim, 2 above_max_delta) (`results/dev-baseline.json`).
 - [x] [build] Warm-up in the live miner (2026-10-19): v1 `Attacker.__init__` captures the CUDA graphs, so the
   live miner and the bench are warm before the first task (first bench image: 296 steps).
-- [ ] [build] Competitor proxy on GPU with all variants: `python -m tools.competitor_scores --variants default,tf32_off,tf32_on`;
-  update notes/competition.md (does any top response fail under some variant? how thin are their margins?).
+- [x] [build] Competitor proxy on GPU with all variants (2026-10-19): 0/336 variant disagreements (max spread 2.8e-5);
+  best responses stop at margin ~9.99 (median), RMSE median 0.00069 vs ours 0.00086; best competitor wins 64/64
+  by mean 0.0035 (`results/competitor-variants-dev.json`, notes/competition.md).
 - [x] [build] Throughput profile (2026-10-19): eager ~125 ms/step at any precision (launch-bound); CUDA-graph fp16
   18 ms (B=1), 11 ms/img (B=4), 9.4 ms/img (B=8); adopted in v1. Details in research_log 2026-10-19.
 - [x] [build] Live timing probe `tools/task_probe.py` (2026-10-19, from the dev machine): task visible at
@@ -34,6 +35,9 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   competitors' class, the v1 search matches them; v1's own lanes often settle in near classes. Ideas: more
   lanes (B=8), shorter discovery then targeted lanes, candidate classes from `-l_true` / LSE lanes at several
   checkpoints, re-targeting more than once, class priors learned from the public dataset's *train* split only.
+- [ ] [research] RMSE at saturated margin (2026-10-19 competitor proxy): margins already match the leaders
+  (median 10.02 vs 9.99), RMSE does not (0.00086 vs 0.00069). Per image, compare our nonzero count with the best
+  competitor's at the same class; try pruning after the margin saturates (drop values whose removal keeps margin >= 10).
 - [ ] [research] Margin-sparsity trade-off: top competitors reach ~1-3% nonzero with margin >= 10.
 - [ ] [research] Reliability: drive failures and variant disagreements to zero before chasing score.
 - [ ] [research] Speed: more steps per budget (see throughput notes).
