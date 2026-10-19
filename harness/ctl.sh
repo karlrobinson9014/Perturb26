@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Operator controls for the loop.
-#   harness/ctl.sh start | stop | pause | resume | status | tail | review-log N | kill
+#   harness/ctl.sh start | stop | pause | resume | status | tail | review-log N | kill | dashboard
 set -uo pipefail
 # shellcheck source=harness/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -16,6 +16,7 @@ case "${1:-status}" in
   kill) touch STOP; pm2 stop perturb26-loop ;;
   pause) touch PAUSE; echo "PAUSE set: the loop idles before the next iteration" ;;
   resume) rm -f PAUSE; echo "resumed" ;;
+  dashboard) pm2 start harness/ecosystem.config.js --only perturb26-dashboard && pm2 save ;;
   status)
     pm2 describe perturb26-loop 2>/dev/null | grep -E "status|restarts|uptime" || echo "perturb26-loop not under pm2"
     [[ -f STOP ]] && echo "STOP is set"; [[ -f PAUSE ]] && echo "PAUSE is set"
@@ -34,5 +35,5 @@ for l in open(sys.argv[1],encoding='utf-8',errors='replace'):
         for c in e['message'].get('content',[]):
             if c.get('type')=='text': print(c['text'])
 " "logs/review-$(printf '%04d' "${2:?iteration}").jsonl" ;;
-  *) echo "usage: $0 start|stop|kill|pause|resume|status|tail|review-log N"; exit 1 ;;
+  *) echo "usage: $0 start|stop|kill|pause|resume|status|tail|review-log N|dashboard"; exit 1 ;;
 esac

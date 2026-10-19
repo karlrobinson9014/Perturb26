@@ -13,10 +13,21 @@ numeric variants, under the live wall-clock budget. The theoretical ceiling is 0
 (`notes/scoring.md`). Every failed image costs a full point, so reliability beats peak score.
 
 ## 1. Orient
+- If the harness context below contains an **Operator task for THIS iteration**, that task is your
+  experiment; the operator directives override the defaults in this prompt.
 - `CLAUDE.md`, `status/STATUS.md`, `status/best.json` (accepted best), `status/results.tsv`
   (every past experiment and its outcome), `notes/research_log.md`, `notes/ideas.md`, `notes/scoring.md`.
 - Don't repeat an experiment the ledger or log already shows as failed unless you have a concrete
   reason it will behave differently; say what that reason is.
+
+## 1b. Literature (when the idea is new or you are stuck)
+You have two research connectors: Consensus (`mcp__claude_ai_Consensus__search`) and SciSpace
+(`mcp__claude_ai_SciSpace__search-papers`); load them with ToolSearch if they are not listed yet.
+Use them to find methods for the problem at hand (sparse / L0 adversarial attacks, target-class
+selection, quantized perturbations, attack speed), at most ~6 searches per iteration. Record what you
+found in `notes/literature.md`: one bullet per paper with title, year, link, the one idea that applies
+here and whether you tried it. Read that file first so you don't repeat searches. A paper is a source
+of hypotheses, not evidence: only the bench decides.
 
 ## 2. Hypothesis first
 Before writing code, append to `notes/research_log.md`:

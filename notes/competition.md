@@ -1,4 +1,17 @@
-# What the network achieves (competitor proxy)
+# What the network achieves
+
+## Live consensus (2026-10-19, `python -m tools.leaderboard`, read-only)
+5 validators; uid 0 holds ~80 % of validator stake (1.55M of ~1.94M), so its ranking decides.
+| consensus rank | uid | avg score (validator uid 0, 300 rounds) |
+|---|---|---|
+| 1 | 36 | 0.9801 |
+| 2 | 161 | 0.9799 |
+| 3 | 162 | 0.9799 |
+| 4-9 | 45, 136, 141, ... | 0.9792-0.9794 |
+Rank 1 needs a 300-round average above ~0.980 with no misses: about 0.981-0.982 per image. The dataset proxy
+below (0.9784) is older than the live averages and underestimates today's leaders.
+
+# Competitor proxy from the dataset
 
 `python -m tools.competitor_scores` on the 64 dev images: the official scorer applied to the
 336 verified adversarial versions other miners submitted for those images (dataset rows, about 5 per

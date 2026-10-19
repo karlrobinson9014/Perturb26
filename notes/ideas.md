@@ -2,6 +2,15 @@
 
 Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discarded`.
 
+## Target class (highest value, see research_log 2026-10-19)
+- [ ] B=8 lanes (9.4 ms/img-step): 4 discovery objectives + 4 targeted lanes fed from them.
+- [ ] Re-target several times (e.g. at 25 %, 45 %, 65 % of the budget), each time replacing the worst lanes.
+- [ ] Discovery lanes without L1 at higher lr (they only need to reveal a class, not a sparse solution).
+- [ ] Candidate classes from the top-k of each discovery lane's logits, not only its argmax.
+- [ ] Class prior: from the public dataset's train split (never dev/test), which adversarial classes win for
+      which clean classes / globally; seed targeted lanes with the prior's top classes.
+- [ ] Warm-start: the best untargeted solution's support as the init of a targeted lane on its class.
+
 ## Objective / trade-off
 - [ ] Sweep `kappa` (search hinge target) and `safety_margin`; the score rewards margin up to 10 logits at 0.003/logit.
 - [ ] Choose the margin target per image from the marginal score: stop pruning when d(score)/d(nnz) turns negative.

@@ -36,13 +36,21 @@ total_cost() {
   awk -F'\t' 'NR>1 && $6 ~ /^[0-9.]+$/ {s+=$6} END {printf "%.2f", s+0}' "$ITERS_TSV"
 }
 
-pick_mode() {
+pick_mode() {  # pick_mode [operator_item]
+  if [[ -n "${1:-}" ]]; then operator_item_mode "$1"; return; fi
   case "$LOOP_MODE" in build | research) echo "$LOOP_MODE"; return ;; esac
-  if grep -qE '^- \[ \] \[build\]' "$STATUS/backlog.md" 2>/dev/null; then echo build; else echo research; fi
+  # blocked items ("- [ ] [build] [blocked: ...]") must not pin the loop in build mode
+  if grep -E '^- \[ \] \[build\]' "$STATUS/backlog.md" 2>/dev/null | grep -qv '\[blocked'; then echo build; else echo research; fi
 }
 
-render_prompt() {  # render_prompt mode iter
+render_prompt() {  # render_prompt mode iter [operator_item]
   cat "$ROOT/prompts/$1.md"
+  printf '\n---\n## Operator directives (from the human operator; they override your defaults and the backlog)\n'
+  cat "$OPERATOR_DIR/directives.md" 2>/dev/null
+  if [[ -n "${3:-}" && -f "$3" ]]; then
+    printf '\n## Operator task for THIS iteration (do this instead of picking from the backlog)\n'
+    sed '1{/^mode:/d}' "$3"
+  fi
   cat <<EOF
 
 ---
@@ -94,18 +102,19 @@ flush_iter_row() {
   rm -f "$LOGS/.last_iter_row"
 }
 
-run_agent() {  # run_agent mode iter
+run_agent() {  # run_agent mode iter [operator_item]
   local tag jsonl prompt_file started rc
   tag="$(printf '%04d' "$2")"
   jsonl="$LOGS/iter-$tag-$1.jsonl"
   prompt_file="$(mktemp)"
-  render_prompt "$1" "$2" > "$prompt_file"
+  render_prompt "$1" "$2" "${3:-}" > "$prompt_file"
+  cp "$prompt_file" "$LOGS/iter-$tag-$1.prompt.md"  # the dashboard shows what the agent was told
   started=$(date +%s)
   log "iter $2: agent start mode=$1 model=$CLAUDE_MODEL log=$jsonl"
   # shellcheck disable=SC2086
   run_isolated "$ITER_TIMEOUT" "$prompt_file" "$jsonl" "$jsonl.err" \
     $AGENT_RUN_PREFIX "$CLAUDE_BIN" -p --model "$CLAUDE_MODEL" --max-turns "$MAX_TURNS" \
-    --output-format stream-json --verbose $CLAUDE_FLAGS
+    --output-format stream-json --verbose $CLAUDE_FLAGS --disallowedTools "$CLAUDE_DENY_TOOLS"
   rc=$?
   rm -f "$prompt_file"
   record_iteration "$2" "$1" "$rc" $(($(date +%s) - started)) "$jsonl"
@@ -210,6 +219,7 @@ evaluate_and_decide() {  # evaluate_and_decide iter mode start_sha
 }
 
 finish_iteration() {  # finish_iteration iter
+  operator_finish "$1" "$(awk -F'\t' -v i="$1" '$2 == i {o = $7 ": " $8} END {print o}' "$STATUS/results.tsv" 2>/dev/null)"
   flush_iter_row
   commit_all "loop: iter $1 status"
   push_branch "$WORK_BRANCH"
@@ -255,8 +265,10 @@ while true; do
   if ! git_sync; then sleep 300; continue; fi
 
   start_sha="$(git rev-parse HEAD)"
-  mode="$(pick_mode)"
-  run_agent "$mode" "$iter"
+  op_item="$(operator_claim)"
+  mode="$(pick_mode "$op_item")"
+  [[ -n "$op_item" ]] && log "iter $iter: operator task $(basename "$op_item") (mode=$mode)"
+  run_agent "$mode" "$iter" "$op_item"
   commit_all "loop: iter $iter $mode leftovers (uncommitted by agent)"
   head_sha="$(git rev-parse HEAD)"
   short="$(git rev-parse --short HEAD)"
