@@ -27,5 +27,7 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] Early exit once the estimate is at the ceiling (alias images); saves GPU, no score effect.
 
 ## Image geometry
-- [ ] Weight values by their bicubic resize influence (some inputs feed more output pixels).
-- [ ] Check images whose shorter side is < 480 (upscaling spreads each input value over several outputs).
+- [x] Resize-influence ideas: moot. Task images are always 480 on the short side, so the preprocessing is a
+  pure crop (notes/scoring.md, 2026-10-19).
+- [ ] Attack the 480x480 crop directly (skip the no-op resize in PREPROCESS) for a slightly faster step;
+  map back with the crop offset.

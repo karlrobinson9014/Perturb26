@@ -13,7 +13,23 @@
   submit, leaving ~5 s of slack. `BENCH_BUDGET=22` mirrors this. If the probe shows the task appears
   earlier or later, propose a new budget in `notes/harness_proposals.md` (BENCH_BUDGET is harness-owned).
 
-Open questions for the probe:
-1. When does `GET /task` actually switch relative to the boundary?
-2. Task image download latency (R2 presigned URL).
-3. Hippius vs R2 upload latency from the miner box.
+## Measured 2026-10-19 (`python -m tools.task_probe --boundaries 10`, from the Windows dev machine)
+Raw: `results/timing-probe-2026-10-19.json`. 11 task changes, 2 poll timeouts.
+
+| quantity | value |
+|---|---|
+| new task visible after the boundary | median **3.0 s** (1.8 - 3.7 s; once 6.5 s after timeouts) |
+| GET /task latency | median 2.0 s, max 8.1 s, 2 timeouts at 10 s |
+| task image download | median 0.33 s, max 1.55 s |
+| task_id prefix | the boundary epoch (`1792372440-hf-...` = boundary 1792372440) |
+| local clock vs server Date | local ~0.5 s fast (1 s resolution) |
+
+Consequences:
+- The attack can start at about boundary + 3.5 s; with submit-by 34 s and ~5 s upload reserve it gets ~25 s,
+  so `BENCH_BUDGET=22` is safe with a few seconds to spare.
+- API latency is spiky. Upstream's 10 s fetch timeout and 2 s retry sleep can cost a whole round; a shorter
+  per-request timeout with quick retries is a cheap reliability win (backlog).
+- Keep the miner box on NTP: boundaries are wall clock on both sides.
+- Re-run the probe from the GPU box; latency there may differ.
+
+Open question: Hippius vs R2 upload latency from the miner box.

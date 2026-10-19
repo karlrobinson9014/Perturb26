@@ -12,9 +12,11 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
   update notes/competition.md (does any top response fail under some variant? how thin are their margins?).
 - [ ] [build] Throughput profile: steps/s of the search step at the dev images' sizes for fp32, fp16 autocast,
   bf16, channels_last, torch.compile; write notes/throughput.md and adopt the fastest admissible default in AttackConfig.
-- [ ] [build] Live timing probe `tools/task_probe.py`: poll GET /task every 0.5 s across >= 10 boundaries; log when
-  task_id changes relative to the boundary and the task image download time. Update notes/timing.md; if the
-  usable budget differs from 22 s, write the proposal in notes/harness_proposals.md.
+- [x] [build] Live timing probe `tools/task_probe.py` (2026-10-19, from the dev machine): task visible at
+  boundary + 3.0 s median, download 0.3 s, GET /task median 2 s with spikes to 8 s and timeouts. 22 s budget
+  confirmed safe. notes/timing.md. Re-run from the GPU box.
+- [ ] [build] Fast task fetch in the live miner: override upstream's fetch with a ~3 s per-request timeout and
+  0.5 s retries (upstream uses 10 s / 2 s; one timeout can cost the round). Unit test with a fake server.
 - [ ] [build] Live dry runs: `python -m miner26.neuron --dry-run` on 5 consecutive live tasks; record official
   scores and wall-clock since boundary in research_log.
 - [ ] [build] Early exit in the attack when the estimate cannot improve (e.g. alias images already at the

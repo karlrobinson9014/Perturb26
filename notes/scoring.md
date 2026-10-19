@@ -38,9 +38,14 @@ usually lowers the margin. Each logit of margin is worth about as much as an RMS
 which equals the official score within ~3e-6 (float32 deltas, see the parity test).
 
 ## Free wins
-- **Outside the crop**: the model sees resize(shorter side -> 480, bicubic, antialias) + center crop 480.
-  Values outside the crop never affect the prediction but count toward RMSE. `Attacker.influence_mask`
-  finds them. Use them only for the 8 novelty pixels.
+- **Geometry: no resampling at all.** Every task image has a short side of exactly 480 px (all 64 dev images
+  and all 11 live tasks probed on 2026-10-19). The preprocessing resize is then the identity, and the model
+  sees a plain center crop: model input pixel (y, x) = image pixel (y, x + offset). Checked numerically:
+  `PREPROCESS(x) == (x[..., 80:560] - 0.5) / 0.5` for 480x640. One changed image value is exactly one
+  changed model input value.
+- **Outside the crop**: for 640x480 a quarter of the pixels are invisible to the model but still count in the
+  RMSE denominator. `Attacker.influence_mask` finds them. Use them only for the 8 novelty pixels.
+  Square 480x480 images have no invisible pixels.
 - **Label-alias collision**: the validator stores the clean prediction as a label string and maps it back
   with `resolve_target_index`. torchvision has "Cardigan" (corgi, 264) and "cardigan" (sweater, 474), so
   a clean prediction of 264 becomes true index 474. The unchanged prediction 264 then counts as a flip with

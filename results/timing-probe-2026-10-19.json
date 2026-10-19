@@ -1,0 +1,186 @@
+{
+ "summary": {
+  "changes_observed": 11,
+  "poll_errors": 2,
+  "offset_s": {
+   "min": 1.76,
+   "median": 3.007,
+   "max": 6.465
+  },
+  "poll_latency_s": {
+   "median": 1.965345025062561,
+   "max": 8.063172340393066
+  },
+  "download_s": {
+   "median": 0.328,
+   "max": 1.55
+  },
+  "clock_skew_s_median": 0.5074851512908936,
+  "note": "offset_s: when a new task became visible relative to the nearest 120 s boundary (poll interval adds up to --interval of delay); clock skew has 1 s resolution"
+ },
+ "events": [
+  {
+   "task_id": "1792372320-hf-ee4a7fa58f4378c1-0472824",
+   "seen_at": 1792372365.871385,
+   "offset_s": 45.871,
+   "poll_latency_s": 8.063,
+   "first_observation": true,
+   "id_epoch_minus_seen_s": -45.871,
+   "download_error": "HTTPSConnectionPool(host='3e9f7eb9c7128e246af6c6ba593ca01a.r2.cloudflarestorage.com', port=443): Read timed out."
+  },
+  {
+   "task_id": "1792372440-hf-ee4a7fa58f4378c1-0638998",
+   "seen_at": 1792372442.6552887,
+   "offset_s": 2.655,
+   "poll_latency_s": 1.962,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.655,
+   "download_s": 1.55,
+   "image_bytes": 487011,
+   "image_size": [
+    653,
+    480
+   ]
+  },
+  {
+   "task_id": "1792372560-hf-ee4a7fa58f4378c1-1018085",
+   "seen_at": 1792372561.9511714,
+   "offset_s": 1.951,
+   "poll_latency_s": 2.01,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.951,
+   "download_s": 0.303,
+   "image_bytes": 368924,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792372680-hf-ee4a7fa58f4378c1-0491146",
+   "seen_at": 1792372683.5737824,
+   "offset_s": 3.574,
+   "poll_latency_s": 2.104,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -3.574,
+   "download_s": 0.311,
+   "image_bytes": 412682,
+   "image_size": [
+    510,
+    480
+   ]
+  },
+  {
+   "task_id": "1792372800-hf-ee4a7fa58f4378c1-0473193",
+   "seen_at": 1792372803.569696,
+   "offset_s": 3.57,
+   "poll_latency_s": 1.93,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -3.57,
+   "download_s": 0.17,
+   "image_bytes": 213544,
+   "image_size": [
+    600,
+    480
+   ]
+  },
+  {
+   "task_id": "1792372920-hf-ee4a7fa58f4378c1-0851143",
+   "seen_at": 1792372922.8307655,
+   "offset_s": 2.831,
+   "poll_latency_s": 1.938,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.831,
+   "download_s": 0.328,
+   "image_bytes": 521615,
+   "image_size": [
+    718,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373040-hf-ee4a7fa58f4378c1-1152120",
+   "seen_at": 1792373043.6522088,
+   "offset_s": 3.652,
+   "poll_latency_s": 1.924,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -3.652,
+   "download_s": 0.224,
+   "image_bytes": 353393,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373160-hf-ee4a7fa58f4378c1-0447802",
+   "seen_at": 1792373163.1711545,
+   "offset_s": 3.171,
+   "poll_latency_s": 1.981,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -3.171,
+   "download_s": 0.683,
+   "image_bytes": 388826,
+   "image_size": [
+    722,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373280-hf-ee4a7fa58f4378c1-0242886",
+   "seen_at": 1792373282.8586054,
+   "offset_s": 2.859,
+   "poll_latency_s": 1.981,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.859,
+   "download_s": 0.438,
+   "image_bytes": 378723,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373400-hf-ee4a7fa58f4378c1-0651981",
+   "seen_at": 1792373403.007199,
+   "offset_s": 3.007,
+   "poll_latency_s": 2.981,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -3.007,
+   "download_s": 0.466,
+   "image_bytes": 728911,
+   "image_size": [
+    720,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373520-hf-ee4a7fa58f4378c1-0555445",
+   "seen_at": 1792373526.4646482,
+   "offset_s": 6.465,
+   "poll_latency_s": 1.387,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -6.465,
+   "download_s": 0.358,
+   "image_bytes": 474152,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792373640-hf-ee4a7fa58f4378c1-0327200",
+   "seen_at": 1792373641.7598553,
+   "offset_s": 1.76,
+   "poll_latency_s": 0.259,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.76,
+   "download_s": 0.167,
+   "image_bytes": 82728,
+   "image_size": [
+    480,
+    480
+   ]
+  }
+ ]
+}
