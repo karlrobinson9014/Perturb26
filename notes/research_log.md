@@ -70,3 +70,14 @@ width 591 -> 56, not `(W - 480) // 2 = 55`. v1 verifies the offset numerically p
 - **v1 bench** (`python -m bench.run_bench --limit 16 --out results/dev16-v1.json`, RTX 4090, 22 s, 3 variants):
   mean 0.9738, 16/16 success, 0 variant disagreements, time max 21.9 s, |est - official| <= 3e-6.
   Same 16 images: v0 0.9553, competitors' best per image 0.9771 (v1 beats it on 0/16). Next: class discovery.
+
+## 2026-10-19 iter 1: target-class race (discover, then target every lane, replace losers)
+Hypothesis: v1 spends ~35 % of the budget with 4 untargeted lanes and only re-targets 2 of them once, so most images
+end in near classes (classes match competitors' best on 3/16; mean nonzero 6.9 % vs their ~3 %). A targeted lane's
+ranking at 60-100 steps already predicts its final ranking (probe, image 1: 463 leads from step 60, final 0.9803;
+image 3: 223/224 lead from step 100, final 0.9800 vs v1 0.9735 / 0.9793), so a race should pay: short untargeted
+discovery, then all lanes targeted at the top candidate classes from the lanes' fp32 top-k logits, then replace the
+worst lanes with the next candidates; retired lanes' candidates stay eligible.
+Literature (notes/literature.md): dominant-class UAP papers suggest a global prior; dev competitors show none (best
+class 151 on 4/64 images), so no prior. MALT-style linear target choice already failed here (rank 129-605).
+Plan: `tools/class_eval.py` (est only, same 16 images as results/dev16-v1.json) for configs, then the full dev bench.
