@@ -96,6 +96,41 @@ EOF
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(ts)" "$1" "$2" "$3" "$4" "$stats" > "$LOGS/.last_iter_row"
 }
 
+# Seconds to wait if the agent session ended on a claude usage limit ("You've hit your session
+# limit · resets 7:30pm (UTC)"), else nothing. Such a session did no work, so it must not use up
+# an iteration: before this check, iterations 7-200 of the first run were all limit no-ops.
+usage_limit_wait() {  # usage_limit_wait jsonl
+  "$PY" - "$1" <<'EOF'
+import datetime, json, re, sys
+text = ""
+try:
+    for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+        if line.startswith("{"):
+            event = json.loads(line)
+            if event.get("type") == "result":
+                text = str(event.get("result", ""))
+except Exception:
+    pass
+if not re.search(r"hit your .*limit", text, re.I):
+    sys.exit(0)
+wait = 1800
+m = re.search(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)(?:\s*\(([^)]+)\))?", text, re.I)
+if m:
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(m.group(4) or "UTC")
+        hour = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0)
+        now = datetime.datetime.now(tz)
+        reset = now.replace(hour=hour, minute=int(m.group(2) or 0), second=0, microsecond=0)
+        if reset <= now:
+            reset += datetime.timedelta(days=1)
+        wait = int((reset - now).total_seconds())
+    except Exception:
+        pass
+print(min(wait, 6 * 3600) + 120)
+EOF
+}
+
 flush_iter_row() {
   [[ -f "$LOGS/.last_iter_row" ]] || return 0
   cat "$LOGS/.last_iter_row" >> "$ITERS_TSV"
@@ -106,6 +141,7 @@ run_agent() {  # run_agent mode iter [operator_item]
   local tag jsonl prompt_file started rc
   tag="$(printf '%04d' "$2")"
   jsonl="$LOGS/iter-$tag-$1.jsonl"
+  AGENT_JSONL="$jsonl"  # read by the main loop (usage_limit_wait)
   prompt_file="$(mktemp)"
   render_prompt "$1" "$2" "${3:-}" > "$prompt_file"
   cp "$prompt_file" "$LOGS/iter-$tag-$1.prompt.md"  # the dashboard shows what the agent was told
@@ -269,6 +305,13 @@ while true; do
   mode="$(pick_mode "$op_item")"
   [[ -n "$op_item" ]] && log "iter $iter: operator task $(basename "$op_item") (mode=$mode)"
   run_agent "$mode" "$iter" "$op_item"
+  limit_wait="$(usage_limit_wait "$AGENT_JSONL")"
+  if [[ -n "$limit_wait" && "$(git rev-parse HEAD)" == "$start_sha" && -z "$(git status --porcelain)" ]]; then
+    # nothing was done: retry the same iteration number (the operator item stays in active/)
+    rm -f "$LOGS/.last_iter_row"
+    log "iter $iter: claude usage limit hit before any work; retrying in ${limit_wait}s"
+    sleep "$limit_wait"; continue
+  fi
   commit_all "loop: iter $iter $mode leftovers (uncommitted by agent)"
   head_sha="$(git rev-parse HEAD)"
   short="$(git rev-parse --short HEAD)"
@@ -298,4 +341,5 @@ while true; do
     evaluate_and_decide "$iter" "$mode" "$start_sha"
   fi
   finish_iteration "$iter"
+  if [[ -n "$limit_wait" ]]; then log "claude usage limit; sleeping ${limit_wait}s"; sleep "$limit_wait"; fi
 done
