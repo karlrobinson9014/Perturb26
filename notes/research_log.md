@@ -109,3 +109,9 @@ Live from the GPU box (inline script calling `fetch_new_task` exactly as the min
 new task seen at boundary + 7.3 s (3 attempts) and + 2.2 s (3 attempts), image downloaded 0.6 s later.
 `python -m miner26.neuron --dry-run`: task 1792417440-hf-..., official 0.97051, margin 10.035, 317 steps, 22 s.
 Also fixed: dry run printed nothing because bittensor's root handlers made `logging.basicConfig` a no-op (`force=True`).
+
+## 2026-10-19 iter 4 (build): timing probe from the GPU box
+`python -m tools.task_probe --boundaries 10 --out results/timing-probe-gpu-2026-10-19.json`: 11 task changes,
+0 poll errors; new task visible at boundary + 2.0 s median (1.3-2.7 s), GET /task 0.31 s median (one 6.3 s spike),
+download 0.50 s median (max 0.72 s), clock +0.4 s vs server. The worst case leaves ~25.6 s for the attack (submit-by 34 s,
+5 s reserve), more than BENCH_BUDGET 22. The iter-3 + 7.3 s observation did not recur. No harness proposal. notes/timing.md.

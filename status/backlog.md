@@ -21,9 +21,9 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
 - [x] [build] Fast task fetch in the live miner (2026-10-19, `miner26/fetch.py`): 3 s per request, 0.5 s retries
   until the task deadline, errors retried instead of skipping the round, stale (previous-epoch) tasks rejected,
   image download retried. `tests/test_fetch.py` (fake HTTP server). Live: task seen at boundary + 7.3 s / + 2.2 s.
-- [ ] [build] Timing probe from the GPU box: `python -m tools.task_probe --boundaries 10`; iter 3 saw the task at
-  boundary + 7.3 s once (attack would get ~21 s < BENCH_BUDGET 22). If > 5 s is common, propose a budget change
-  in notes/harness_proposals.md.
+- [x] [build] Timing probe from the GPU box (2026-10-19, 10 boundaries, `results/timing-probe-gpu-2026-10-19.json`):
+  task visible at boundary + 2.0 s median (1.3-2.7 s), GET /task median 0.31 s (max 6.3 s), download 0.5 s,
+  0 errors. The + 7.3 s of iter 3 did not recur; ~25.6 s attack window worst case, so no budget change.
 - [ ] [build] Live dry runs: `python -m miner26.neuron --dry-run` on 5 consecutive live tasks; record official
   scores and wall-clock since boundary in research_log.
 - [ ] [build] v1 regression test on the GPU: graph-captured lanes give the same margins and gradients as the

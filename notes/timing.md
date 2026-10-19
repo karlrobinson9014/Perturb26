@@ -38,3 +38,19 @@ Open question: Hippius vs R2 upload latency from the miner box.
 2 boundaries: new task seen at + 7.3 s and + 2.2 s (3 attempts each), image download ~0.6 s. The 7.3 s case
 leaves ~21 s of attack under submit-by 34 s and a 5 s reserve: still >= BENCH_BUDGET-ish, but tight. Worth a
 longer probe (`tools/task_probe.py`) from this box.
+
+## 2026-10-19 from the GPU box, 10 boundaries (iter 4)
+`python -m tools.task_probe --boundaries 10 --out results/timing-probe-gpu-2026-10-19.json` (0.5 s polls, 10 s timeout).
+11 task changes, 0 poll errors.
+
+| quantity | value |
+|---|---|
+| new task visible after the boundary | median **2.0 s**, min 1.3 s, max **2.7 s** |
+| GET /task latency | median 0.31 s, max 6.3 s (one spike; the miner's 3 s timeout would retry it) |
+| task image download | median 0.50 s, max 0.72 s |
+| local clock vs server Date | +0.4 s (1 s resolution) |
+
+Worst case seen: attack starts at about boundary + 3.4 s, so with submit-by 34 s and a 5 s upload reserve it
+gets about 25.6 s, which is more than BENCH_BUDGET 22. The + 7.3 s from iter 3 did not happen again in 10 boundaries
+(it came after 3 fetch attempts, so it was most likely a latency spike, not the task arriving late).
+**No budget change proposed.** GET /task is faster here than from the dev machine (0.3 s vs 2 s median).
