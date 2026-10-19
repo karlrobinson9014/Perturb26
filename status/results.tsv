@@ -200,3 +200,4 @@ ts	iter	mode	commit	dev_score	holdout_score	decision	reason
 2026-10-19T17:34:50Z	198	build	1f79a44			noop	agent made no commits
 2026-10-19T17:35:28Z	199	build	b47989a			noop	agent made no commits
 2026-10-19T17:36:07Z	200	build	d50a471			noop	agent made no commits
+2026-10-19T21:11:06Z	201	build	bcbd194	0.9747791391155562		keep	build change, no regression (reviewed at next promotion)
