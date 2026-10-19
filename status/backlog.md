@@ -24,8 +24,12 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
 - [x] [build] Timing probe from the GPU box (2026-10-19, 10 boundaries, `results/timing-probe-gpu-2026-10-19.json`):
   task visible at boundary + 2.0 s median (1.3-2.7 s), GET /task median 0.31 s (max 6.3 s), download 0.5 s,
   0 errors. The + 7.3 s of iter 3 did not recur; ~25.6 s attack window worst case, so no budget change.
-- [ ] [build] Live dry runs: `python -m miner26.neuron --dry-run` on 5 consecutive live tasks; record official
-  scores and wall-clock since boundary in research_log.
+- [x] [build] Live dry runs (2026-10-19, `python -m miner26.neuron --dry-run --rounds 5 --out results/dry-run-live-2026-10-19.json`):
+  5/5 consecutive live tasks scored, 5/5 success, official mean 0.97685 (min 0.96875, max 0.98328), 0 variant
+  disagreements; task seen at boundary + 2.7 s median (max 3.0), attack ~25 s, done at + 28.7 s (deadline 29).
+  Also fixed: bittensor muted the `miner26` logger (level CRITICAL), so the dry run and the live miner logged nothing.
+- [ ] [build] Confirm live-miner logging: after the `_setup_miner_logging` fix, check the pm2 log of perturb26-miner
+  shows `Submitted task=... since_boundary=...` lines (needs the wallet / running miner; not testable in a dry run).
 - [ ] [build] v1 regression test on the GPU: graph-captured lanes give the same margins and gradients as the
   eager `_Lanes` on a real dev image (skip when CUDA is unavailable).
 - [ ] [build] Early exit in the attack when the estimate cannot improve (e.g. alias images already at the

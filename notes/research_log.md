@@ -115,3 +115,29 @@ Also fixed: dry run printed nothing because bittensor's root handlers made `logg
 0 poll errors; new task visible at boundary + 2.0 s median (1.3-2.7 s), GET /task 0.31 s median (one 6.3 s spike),
 download 0.50 s median (max 0.72 s), clock +0.4 s vs server. The worst case leaves ~25.6 s for the attack (submit-by 34 s,
 5 s reserve), more than BENCH_BUDGET 22. The iter-3 + 7.3 s observation did not recur. No harness proposal. notes/timing.md.
+
+## 2026-10-19 iter 5 (build): live dry runs on 5 consecutive tasks
+New: `python -m miner26.neuron --dry-run --rounds N --out <json>` waits for the next N boundaries and handles each
+new task like the live miner (fast fetch loop, boundary from the id epoch, attack deadline boundary + 34 - 5 s),
+scores it with `bench.official.OfficialScorer`, submits nothing. Plain `--dry-run` (current task, `--budget`) unchanged.
+`python -m miner26.neuron --dry-run --rounds 5 --out results/dry-run-live-2026-10-19.json` (RTX 4090, default config):
+
+| task | official | margin | nonzero | steps | seen | attack start | done |
+|---|---|---|---|---|---|---|---|
+| 1792421040-...-1235189 | 0.96875 | 10.002 | 75502 | 398 | +2.9 s | +3.8 s | +28.7 s |
+| 1792421160-...-0856873 | 0.98047 | 10.015 | 26903 | 370 | +2.7 s | +3.5 s | +28.7 s |
+| 1792421280-...-0529088 | 0.98328 | 10.001 | 14474 | 356 | +3.0 s | +3.9 s | +28.7 s |
+| 1792421400-...-1006678 | 0.97102 | 10.039 | 68495 | 333 | +2.8 s | +3.5 s | +28.7 s |
+| 1792421520-...-0508541 | 0.98073 | 10.040 | 21243 | 365 | +2.0 s | +2.8 s | +28.7 s |
+
+Mean 0.97685, 5/5 success, 0 variant disagreements, est == official to 3e-6. Live the attack gets ~25 s (more than
+BENCH_BUDGET 22) because it runs to boundary + 29 s; with the 5 s upload reserve the submission lands by ~+34 s,
+6 s before the validator's first `/submits` poll at + 40 s. Seen-at-boundary + 2.0-3.0 s matches iter 4's probe.
+
+Bug found on the way: the 5-round log file was empty. bittensor's default logging state (`before_enable_default`)
+sets every non-bittensor logger to CRITICAL when bittensor is imported/configured, so all `miner26` logs (dry run,
+fetch retries, and the live miner's `Submitted task=...` lines) were silently dropped; iter 3's `basicConfig(force=True)`
+did not help because the logger level, not the handler, was the problem. Fix: `_setup_miner_logging()` gives the
+`miner26` logger its own stderr handler at INFO with propagate off, called in the dry run and after
+`PerturbMiner.__init__`. Test: `tests/test_neuron_dry_run.py`. Verified: `--dry-run --budget 5` prints again
+(task 1792421640-..., official 0.97952). The live-miner side still needs a check in the pm2 log (backlog).
