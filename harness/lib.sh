@@ -23,6 +23,9 @@ load_env() {
   CLAUDE_MODEL="${CLAUDE_MODEL:-claude-opus-5-5}"
   REVIEW_MODEL="${REVIEW_MODEL:-$CLAUDE_MODEL}"
   CLAUDE_FLAGS="${CLAUDE_FLAGS:---dangerously-skip-permissions}"
+  # claude.ai connectors loop sessions must never use (mail, files, calendar, ...); the research
+  # connectors (Consensus, SciSpace) stay available.
+  CLAUDE_DENY_TOOLS="${CLAUDE_DENY_TOOLS:-mcp__claude_ai_Gmail,mcp__claude_ai_Google_Drive,mcp__claude_ai_Google_Calendar,mcp__claude_ai_Claude_Docs,mcp__claude_ai_Slack,mcp__claude_ai_Notion,mcp__claude_ai_Asana,mcp__claude_ai_Atlassian,mcp__claude_ai_Box,mcp__claude_ai_Canva,mcp__claude_ai_Figma,mcp__claude_ai_HubSpot,mcp__claude_ai_Intercom,mcp__claude_ai_Linear,mcp__claude_ai_monday_com}"
   AGENT_RUN_PREFIX="${AGENT_RUN_PREFIX:-}"
   MAX_TURNS="${MAX_TURNS:-150}"
   ITER_TIMEOUT="${ITER_TIMEOUT:-5400}"
@@ -37,12 +40,61 @@ load_env() {
   HOLDOUT_TOL="${HOLDOUT_TOL:-0.003}"
   TARGET_SCORE="${TARGET_SCORE:-0.993}"
   HOLDOUT_DIR="${HOLDOUT_DIR:-$HOME/perturb26-holdout}"
+  OPERATOR_DIR="${OPERATOR_DIR:-$HOME/perturb26-operator}"
   DEV_MANIFEST="${DEV_MANIFEST:-$ROOT/bench/manifests/dev.json}"
   PY="${PY:-$ROOT/.venv/bin/python}"
   BENCH_RUN_PREFIX="${BENCH_RUN_PREFIX:-}"
   export PYTHONPATH="$ROOT"
+  # The claude CLI is a node script installed with nvm; pm2 and cron do not load nvm.
+  if ! command -v node >/dev/null 2>&1; then
+    local nvm_bin
+    nvm_bin="$(ls -d /opt/nvm/versions/node/*/bin "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+    [[ -n "$nvm_bin" ]] && export PATH="$nvm_bin:$PATH"
+  fi
+  # Claude Code refuses --dangerously-skip-permissions as root unless told it is in a sandbox.
+  # This box is a disposable container; for real isolation run agents as another user
+  # (AGENT_RUN_PREFIX, README "Isolation") and set IS_SANDBOX=0 in loop.env.
+  if [[ "$(id -u)" == 0 ]]; then export IS_SANDBOX="${IS_SANDBOX:-1}"; fi
   # loop.env is sourced with set -a; the holdout location must not reach agent environments.
-  export -n HOLDOUT_DIR 2>/dev/null || true
+  export -n HOLDOUT_DIR OPERATOR_DIR 2>/dev/null || true
+  mkdir -p "$OPERATOR_DIR/queue" "$OPERATOR_DIR/active" "$OPERATOR_DIR/done"
+  [[ -f "$OPERATOR_DIR/directives.md" ]] || printf '(none)\n' > "$OPERATOR_DIR/directives.md"
+}
+
+# ---------------------------------------------------------------- operator directives
+# The operator (a human, via harness/dashboard.py or by hand) steers the loop with:
+#   $OPERATOR_DIR/directives.md   standing directives, pasted into every agent prompt
+#   $OPERATOR_DIR/queue/*.md      one-shot ideas or plans; the oldest is handed to the next
+#                                 iteration (first line `mode: build|research`, default research)
+#                                 and moved to done/ with the iteration's outcome.
+# The directory lives outside the repo (dashboard edits never dirty the tree) and is not
+# exported to agent environments.
+
+operator_claim() {  # operator_claim -> prints the claimed item (now in active/) or nothing
+  local item
+  item="$(ls -1 "$OPERATOR_DIR"/active/*.md 2>/dev/null | head -1)"  # left over by a killed run
+  if [[ -z "$item" ]]; then
+    item="$(ls -1 "$OPERATOR_DIR"/queue/*.md 2>/dev/null | sort | head -1)"
+    [[ -n "$item" ]] || return 0
+    mv "$item" "$OPERATOR_DIR/active/" || return 0
+    item="$OPERATOR_DIR/active/$(basename "$item")"
+  fi
+  echo "$item"
+}
+
+operator_item_mode() {  # operator_item_mode file -> build|research
+  local mode
+  mode="$(head -1 "$1" 2>/dev/null | sed -n 's/^mode:[[:space:]]*\(build\|research\)[[:space:]]*$/\1/p')"
+  echo "${mode:-research}"
+}
+
+operator_finish() {  # operator_finish iter outcome
+  local item
+  for item in "$OPERATOR_DIR"/active/*.md; do
+    [[ -f "$item" ]] || continue
+    printf '\n---\ndone: iter %s, %s, %s\n' "$1" "$(ts)" "$2" >> "$item"
+    mv "$item" "$OPERATOR_DIR/done/iter-$1-$(basename "$item")"
+  done
 }
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }

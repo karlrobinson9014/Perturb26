@@ -23,6 +23,18 @@ module.exports = {
       error_file: path.join(root, "logs", "pm2-loop.err.log"),
     },
     {
+      name: "perturb26-dashboard",
+      script: path.join(root, "harness", "dashboard.py"),
+      interpreter: path.join(root, ".venv", "bin", "python"),
+      args: "--port 18080",
+      cwd: root,
+      autorestart: true,
+      restart_delay: 5000,
+      time: true,
+      out_file: path.join(root, "logs", "pm2-dashboard.out.log"),
+      error_file: path.join(root, "logs", "pm2-dashboard.err.log"),
+    },
+    {
       name: "perturb26-miner",
       script: path.join(root, "harness", "run_miner.sh"),
       interpreter: "bash",

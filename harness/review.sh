@@ -55,7 +55,7 @@ log "iter $iter: reviewer start (model=$REVIEW_MODEL base=${base:0:8})"
 # shellcheck disable=SC2086
 run_isolated "$REVIEW_TIMEOUT" "$prompt_file" "$LOGS/review-$tag.jsonl" "$LOGS/review-$tag.jsonl.err" \
   $AGENT_RUN_PREFIX "$CLAUDE_BIN" -p --model "$REVIEW_MODEL" --max-turns "$MAX_TURNS" \
-  --output-format stream-json --verbose $CLAUDE_FLAGS
+  --output-format stream-json --verbose $CLAUDE_FLAGS --disallowedTools "$CLAUDE_DENY_TOOLS"
 log "iter $iter: reviewer exit rc=$?"
 rm -f "$prompt_file"
 

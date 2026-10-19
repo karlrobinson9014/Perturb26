@@ -1,35 +1,43 @@
-"""Sparse, quantized L-inf = 1/255 attack (v0).
+"""Sparse, quantized L-inf = 1/255 attack (v1: batched multi-objective ISTA).
 
 Why this shape (see notes/scoring.md): the validator scores
 ``0.7*linf_score + 0.3*rmse_score + 0.03*margin + 0.01*novelty``. On the uint8
 grid the cheapest admissible L-inf is exactly 1/255, so every perturbed value
 is in {-1, 0, +1}/255 and the remaining levers are *how few* values change
-(RMSE) and *how far* past the decision boundary we land (margin).
+(RMSE) and reaching a 10-logit margin (where the margin term saturates).
 
-Pipeline, all inside one wall-clock deadline (anytime: the best verified
+Pipeline, all inside one wall-clock deadline (anytime: the best fp32-verified
 candidate so far is always returned):
 
-1. novelty seed   - change 8 pixels the model cannot see (outside the 480 crop);
-                    on its own this scores when the validator's true index differs
-                    from the clean prediction (label-alias collision).
-2. search         - continuous delta = tanh(w) in [-1, 1] (units of 1/255), rounded
-                    with a straight-through estimator; hinge loss on the
-                    validator-relative margin plus an adaptive L1 penalty.
-3. prune          - greedily drop the nonzero entries with the smallest first-order
-                    contribution to the margin while the fp32 margin stays above
-                    ``safety_margin``.
+1. novelty seed - 8 pixels the model cannot see (outside the 480 crop), seeded per
+                  hotkey so two miners never submit byte-identical images.
+2. lanes        - B searches run as one batch. Each is proximal gradient (ISTA) on a
+                  continuous d in [-1, 1] levels, rounded with a straight-through
+                  estimator, with an L1 weight that adapts to hold the margin at
+                  ``target_margin``. Lanes differ in objective: untargeted margin,
+                  -logit_true, or tau*logsumexp(others) - logit_true. The class a lane
+                  ends up in matters more than anything else (notes/research_log.md,
+                  2026-10-19: aimed at the right class the same search matches the
+                  network's best responses), and objectives that only push the true
+                  class down let far, cheap classes emerge.
+3. switch       - after ``switch_fraction`` of the budget the weakest ``n_switch``
+                  lanes restart as targeted searches on classes the others surfaced.
 
-Every kept candidate is re-checked in fp32 without autocast, the same numeric
-path the validator uses.
+Speed: on the fast path (preprocessing is a pure center crop, true for every live task:
+short side 480) the fp16 objective gradient and the fp32 margin check are CUDA-graph
+captured once in ``__init__`` (~18 ms per lane-step instead of ~125 ms eager). Any other
+geometry or device runs the same algorithm eagerly through PREPROCESS.
+
+The returned image is re-checked through the validator's own path (PREPROCESS on the
+uint8 image, fp32, no autocast) and its score estimate is computed from that.
 """
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import torch
-import torch.nn.functional as F
 
 from miner26 import _upstream  # noqa: F401
 from miner26.scoring import DEFAULT_PARAMS, QUANT, ScoreParams, estimate_score, rmse_for_unit_changes, validator_true_index
@@ -38,16 +46,20 @@ from perturbnet.model import PREPROCESS
 
 @dataclass
 class AttackConfig:
-    safety_margin: float = 1.0  # fp32 logit margin a candidate needs before it is kept
-    kappa: float = 4.0  # hinge target for the search loss (logits)
-    lr: float = 0.25  # Adam lr on w (tanh parameterisation)
-    l1_init: float = 2.0  # L1 weight once the first flip is found
-    l1_up: float = 1.15  # multiply L1 weight while the quantized candidate flips
-    l1_down: float = 0.8  # multiply L1 weight while it does not
-    search_fraction: float = 0.65  # share of the budget spent in search; rest is pruning
-    prune_start_fraction: float = 0.5
+    lanes: str = "0:1,2:1,1:1,2:0.3"  # mode:tau per lane; 0 margin, 1 -logit_true, 2 tau*LSE(others)-logit_true
+    lr: float = 0.01  # step on d (levels) per unit of mean-normalised gradient
+    lam0: float = 1.0  # L1 weight when a lane first holds target_margin
+    lam_up: float = 1.05  # multiply L1 weight while the lane's margin is above target
+    lam_down: float = 0.97  # multiply L1 weight while it is below
+    target_margin: float = 10.05  # margin the L1 schedule holds (score saturates at 10)
+    kappa: float = 10.5  # stop pushing the objective once the margin is above this
+    safety_margin: float = 1.0  # fp32 margin a candidate needs before it is kept
+    switch_fraction: float = 0.35  # share of the budget before weak lanes re-target
+    n_switch: int = 2
     novelty_pixels: int = DEFAULT_PARAMS.novelty_target_pixels
     search_amp: bool = True  # fp16 autocast for gradient steps on CUDA
+    cuda_graphs: bool = True
+    end_reserve: float = 0.3  # seconds kept for the final validator-path check
     seed: int = 0
 
 
@@ -66,14 +78,103 @@ class AttackResult:
     info: dict[str, Any] = field(default_factory=dict)
 
 
+def parse_lanes(spec: str) -> list[tuple[int, float]]:
+    lanes = []
+    for part in spec.split(","):
+        mode, tau = part.split(":")
+        lanes.append((int(mode), float(tau)))
+    return lanes
+
+
+def _objective(o: torch.Tensor, t: torch.Tensor, j: torch.Tensor, mode: torch.Tensor, tau: torch.Tensor):
+    """Per-lane objective to maximise and the validator margin (best other - true). Graph-safe: no host syncs."""
+    B = o.shape[0]
+    tt = t.view(1, 1).expand(B, 1)
+    true = o.gather(1, tt).squeeze(1)
+    others = o.scatter(1, tt, torch.full((B, 1), -1e4, device=o.device, dtype=o.dtype))
+    margin = others.max(1).values - true
+    targeted = o.gather(1, j.clamp(min=0).view(B, 1)).squeeze(1) - true
+    lse = tau * torch.logsumexp(others / tau[:, None], 1) - true
+    untargeted = torch.where(mode == 1, -true, torch.where(mode == 2, lse, margin))
+    return torch.where(j >= 0, targeted, untargeted), margin
+
+
+class _Lanes:
+    """Lane state (true class, target, objective) and the two kernels, run eagerly."""
+
+    def __init__(self, model: torch.nn.Module, device: torch.device, B: int, amp: bool,
+                 to_input: Callable[[torch.Tensor], torch.Tensor]) -> None:
+        self.model, self.B, self.to_input = model, B, to_input
+        self.amp = amp and device.type == "cuda"
+        self.t = torch.zeros((), dtype=torch.long, device=device)
+        self.j = torch.full((B,), -1, dtype=torch.long, device=device)
+        self.mode = torch.zeros(B, dtype=torch.long, device=device)
+        self.tau = torch.ones(B, device=device)
+
+    def _grad(self, q: torch.Tensor):
+        qv = q.detach().requires_grad_(True)
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=self.amp):
+            o = self.model(self.to_input(qv)).float()
+        obj, margin = _objective(o, self.t, self.j, self.mode, self.tau)
+        (g,) = torch.autograd.grad(obj.sum(), qv)
+        return margin.detach(), g
+
+    def _check(self, q: torch.Tensor):
+        """fp32, no autocast."""
+        with torch.no_grad():
+            o = self.model(self.to_input(q)).float()
+        _, margin = _objective(o, self.t, self.j, self.mode, self.tau)
+        return margin, o.argmax(1)
+
+    def grad(self, q: torch.Tensor):
+        return self._grad(q)
+
+    def check(self, q: torch.Tensor):
+        return self._check(q)
+
+
+class _GraphLanes(_Lanes):
+    """The same kernels captured as CUDA graphs on a fixed lane-batch shape."""
+
+    def __init__(self, model, device, B, amp, to_input, shape: tuple[int, int, int]) -> None:
+        super().__init__(model, device, B, amp, to_input)
+        self.q_in = torch.zeros((B, *shape), device=device)
+        benchmark = torch.backends.cudnn.benchmark
+        torch.backends.cudnn.benchmark = True  # pick conv algorithms once, at capture; restored below
+        try:
+            side = torch.cuda.Stream(device)
+            side.wait_stream(torch.cuda.current_stream(device))
+            with torch.cuda.stream(side):
+                for _ in range(3):
+                    self._grad(self.q_in)
+                    self._check(self.q_in)
+            torch.cuda.current_stream(device).wait_stream(side)
+            self.g_graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.g_graph):
+                self.g_out = self._grad(self.q_in)
+            self.c_graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.c_graph):
+                self.c_out = self._check(self.q_in)
+        finally:
+            torch.backends.cudnn.benchmark = benchmark
+
+    def grad(self, q: torch.Tensor):
+        self.q_in.copy_(q)
+        self.g_graph.replay()
+        return self.g_out
+
+    def check(self, q: torch.Tensor):
+        self.q_in.copy_(q)
+        self.c_graph.replay()
+        return self.c_out
+
+
 @dataclass
-class _Candidate:
-    q: torch.Tensor  # int8-valued float tensor in {-1, 0, 1}, CHW
+class _Best:
     est: float
     margin: float
-    flipped: bool
-    nonzero: int
-    changed_pixels: int
+    q: torch.Tensor
+    cls: int
 
 
 class Attacker:
@@ -90,9 +191,31 @@ class Attacker:
         self.device = device
         self.cfg = cfg or AttackConfig()
         self.params = params
+        self.lane_spec = parse_lanes(self.cfg.lanes)
+        self.B = len(self.lane_spec)
         self._mask_cache: dict[tuple[int, int, int], torch.Tensor] = {}
+        self._offset_cache: dict[tuple[int, int, int], tuple[int, int] | None] = {}
+        self.crop = int(PREPROCESS.crop_size[0])
+        mean = torch.tensor(PREPROCESS.mean, device=device).view(1, 3, 1, 1)
+        std = torch.tensor(PREPROCESS.std, device=device).view(1, 3, 1, 1)
+        self._mean, self._std = mean, std
+        self._scale = (1.0 / 255.0) / std  # one uint8 level in model-input units, per channel
+        self._x0 = torch.zeros(1, 3, self.crop, self.crop, device=device)
+        self._crop_lanes = self._make_crop_lanes()
 
-    # ------------------------------------------------------------------ helpers
+    # ------------------------------------------------------------------ setup
+
+    def _make_crop_lanes(self) -> _Lanes:
+        def to_input(qv: torch.Tensor) -> torch.Tensor:
+            return self._x0 + self._scale * qv
+
+        shape = (3, self.crop, self.crop)
+        if self.device.type == "cuda" and self.cfg.cuda_graphs:
+            try:
+                return _GraphLanes(self.model, self.device, self.B, self.cfg.search_amp, to_input, shape)
+            except Exception:  # capture unsupported (driver, model): run eagerly
+                pass
+        return _Lanes(self.model, self.device, self.B, self.cfg.search_amp, to_input)
 
     def influence_mask(self, shape: tuple[int, int, int]) -> torch.Tensor:
         """Bool CHW mask of input values that reach the model after resize + center crop."""
@@ -105,38 +228,26 @@ class Attacker:
             self._mask_cache[shape] = grad[0].abs() > 0
         return self._mask_cache[shape]
 
-    def _logits(self, x01: torch.Tensor, *, amp: bool) -> torch.Tensor:
-        use_amp = amp and self.device.type == "cuda"
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
-            return self.model(PREPROCESS(x01)).float()
+    def crop_offset(self, shape: tuple[int, int, int]) -> tuple[int, int] | None:
+        """(top, left) when PREPROCESS on this shape is a pure center crop + normalise, else None.
 
-    @staticmethod
-    def _margin(logits_row: torch.Tensor, true_index: int) -> torch.Tensor:
-        true_logit = logits_row[true_index]
-        other = logits_row.clone()
-        other[true_index] = -float("inf")
-        return other.max() - true_logit
-
-    def _evaluate(self, clean: torch.Tensor, q: torch.Tensor, true_index: int) -> _Candidate:
-        """fp32, no autocast: the validator's numeric path."""
-        with torch.no_grad():
-            row = self._logits(((clean + q) / 255.0).unsqueeze(0), amp=False)[0]
-        margin = float(self._margin(row, true_index).item())
-        flipped = int(row.argmax().item()) != true_index
-        nonzero = int((q != 0).sum().item())
-        changed_pixels = int((q != 0).any(dim=0).sum().item())
-        linf = QUANT if nonzero else 0.0
-        est = estimate_score(
-            linf=linf,
-            rmse=rmse_for_unit_changes(nonzero, q.numel()),
-            margin=margin,
-            changed_pixels=changed_pixels,
-            flipped=flipped,
-            params=self.params,
-        )
-        if margin < self.cfg.safety_margin:
-            est = 0.0
-        return _Candidate(q=q.clone(), est=est, margin=margin, flipped=flipped, nonzero=nonzero, changed_pixels=changed_pixels)
+        Offsets follow torchvision's center_crop (``int(round((H - crop) / 2))``, so odd
+        margins round half to even); verified numerically, never assumed.
+        """
+        if shape not in self._offset_cache:
+            _, H, W = shape
+            c = self.crop
+            result = None
+            if min(H, W) >= c:
+                oy, ox = int(round((H - c) / 2.0)), int(round((W - c) / 2.0))
+                gen = torch.Generator(device="cpu").manual_seed(4321)
+                x = torch.rand((1, *shape), generator=gen).to(self.device)
+                ref = PREPROCESS(x)
+                mine = (x[..., oy:oy + c, ox:ox + c] - self._mean) / self._std
+                if ref.shape == mine.shape and float((ref - mine).abs().max()) < 1e-5:
+                    result = (oy, ox)
+            self._offset_cache[shape] = result
+        return self._offset_cache[shape]
 
     def _novelty_seed(self, lo: torch.Tensor, hi: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Change ``novelty_pixels`` pixels, preferring ones outside the model's view.
@@ -164,133 +275,217 @@ class Attacker:
                     break
         return q
 
+    def _validator_logits(self, image01: torch.Tensor) -> torch.Tensor:
+        """The validator's numeric path: PREPROCESS on [0,1] CHW, fp32, no autocast."""
+        with torch.no_grad():
+            return self.model(PREPROCESS(image01.unsqueeze(0)))[0].float()
+
+    def _estimate(self, nonzero: int, total: int, margin: float, changed_pixels: int) -> float:
+        return estimate_score(
+            linf=QUANT if nonzero else 0.0,
+            rmse=rmse_for_unit_changes(nonzero, total),
+            margin=margin,
+            changed_pixels=changed_pixels,
+            flipped=margin > 0.0,
+            params=self.params,
+        )
+
     # ------------------------------------------------------------------ main
 
     def run(self, clean_u8: torch.Tensor, deadline: float) -> AttackResult:
         t0 = time.time()
         cfg = self.cfg
-        torch.manual_seed(cfg.seed)
+        B = self.B
         clean = clean_u8.to(self.device).float()  # 0..255, CHW
-        with torch.no_grad():
-            clean_row = self._logits((clean / 255.0).unsqueeze(0), amp=False)[0]
+        shape = tuple(clean.shape)
+        total = clean.numel()
+        clean_row = self._validator_logits(clean / 255.0)
         clean_index = int(clean_row.argmax().item())
         resolved = validator_true_index(clean_index)
         true_index = clean_index if resolved is None else int(resolved)
 
-        lo = (-clean).clamp(min=-1.0)
-        hi = (255.0 - clean).clamp(max=1.0)
-        mask = self.influence_mask(tuple(clean.shape)) & ((hi - lo) > 0)
-        info: dict[str, Any] = {"mask_values": int(mask.sum().item()), "alias_target": true_index != clean_index}
+        lo_full = (-clean).clamp(min=-1.0)
+        hi_full = (255.0 - clean).clamp(max=1.0)
+        mask_full = self.influence_mask(shape) & ((hi_full - lo_full) > 0)
+        seed_full = self._novelty_seed(lo_full, hi_full, mask_full)
 
-        seed_q = self._novelty_seed(lo, hi, mask)
-        best = self._evaluate(clean, seed_q, true_index)
-        # Highest-margin flip seen, kept for when nothing clears safety_margin:
-        # a thin flip still scores if the validator's numerics agree.
-        fallback = best
+        offset = self.crop_offset(shape)
+        if offset is not None:
+            oy, ox = offset
+            c = self.crop
+            window = (slice(None), slice(oy, oy + c), slice(ox, ox + c))
+            self._x0.copy_(PREPROCESS((clean / 255.0).unsqueeze(0)))
+            lanes = self._crop_lanes
+            lo, hi = lo_full[window], hi_full[window]
+            fixed = seed_full[window]
+            var_mask = None
+            outside = seed_full.clone()
+            outside[window] = 0.0
+        else:
+            window = None
+
+            def to_input(qv: torch.Tensor) -> torch.Tensor:
+                return PREPROCESS((clean.unsqueeze(0) + qv) / 255.0)
+
+            lanes = _Lanes(self.model, self.device, B, cfg.search_amp, to_input)
+            lo, hi = lo_full, hi_full
+            fixed = seed_full
+            var_mask = mask_full.float()
+            outside = torch.zeros_like(seed_full)
+        n_out = int((outside != 0).sum().item())
+        px_out = int((outside != 0).any(dim=0).sum().item())
+        info: dict[str, Any] = {"path": "crop" if window is not None else "generic",
+                                "alias_target": true_index != clean_index}
+
+        lanes.t.fill_(true_index)
+        for b, (mode, tau) in enumerate(self.lane_spec):
+            lanes.mode[b] = mode
+            lanes.tau[b] = tau
+            lanes.j[b] = -1
+        has_fixed = bool((fixed != 0).any())
+
+        def quantize(d: torch.Tensor) -> torch.Tensor:
+            q = torch.round(d)
+            if has_fixed:
+                q = torch.where(fixed != 0, fixed, q)
+            return q
+
+        def counts(q: torch.Tensor) -> tuple[list[int], list[int]]:
+            nz = ((q != 0).flatten(1).sum(1) + n_out).tolist()
+            px = ((q != 0).any(dim=1).flatten(1).sum(1) + px_out).tolist()
+            return nz, px
+
+        d = torch.zeros((B, *lo.shape), device=self.device)
+        lam = torch.zeros(B, device=self.device)
+        started = torch.zeros(B, dtype=torch.bool, device=self.device)
+        best: list[_Best | None] = [None] * B
+        fallback: _Best | None = None  # highest-margin flip below safety_margin
+        switch_at = t0 + cfg.switch_fraction * max(0.0, deadline - t0)
+        switched = False
         steps = 0
-
-        def keep(candidate: _Candidate) -> None:
-            nonlocal best, fallback
-            if candidate.est > best.est:
-                best = candidate
-            if candidate.flipped and candidate.margin > fallback.margin:
-                fallback = candidate
-
-        # ---- search
-        search_until = t0 + cfg.search_fraction * max(0.0, deadline - t0)
-        w = torch.zeros_like(clean, requires_grad=True)
-        opt = torch.optim.Adam([w], lr=cfg.lr)
-        lam = 0.0
-        mask_f = mask.float()
-        n_mask = max(1.0, float(mask_f.sum().item()))
         first_flip_step = -1
-        while time.time() < search_until:
-            d = torch.tanh(w) * mask_f
-            d = torch.maximum(torch.minimum(d, hi), lo)
-            q_hard = torch.round(d)
-            d_ste = d + (q_hard - d).detach()
-            q_full = torch.where(seed_q != 0, seed_q, d_ste)
-            row = self._logits(((clean + q_full) / 255.0).unsqueeze(0), amp=cfg.search_amp)[0]
-            margin = self._margin(row, true_index)
-            loss = F.relu(cfg.kappa - margin) + lam * d.abs().sum() / n_mask
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
+        step_time = 0.05
+        while True:
+            now = time.time()
+            if now + 1.5 * step_time + cfg.end_reserve >= deadline:
+                break
+            if not switched and cfg.n_switch > 0 and now >= switch_at:
+                switched = True
+                info["switch"] = self._retarget(lanes, best, d, lam, started, quantize, true_index)
+            q = quantize(d)
+            margin, g = lanes.grad(q)
             steps += 1
+            margins = margin.tolist()
+            if first_flip_step < 0 and max(margins) > 0:
+                first_flip_step = steps
+            nz, px = counts(q)
+            need = []
+            for b in range(B):
+                projected = self._estimate(nz[b], total, margins[b], px[b]) if margins[b] > 0 else 0.0
+                bar = best[b].est if best[b] is not None else 0.0
+                need.append(margins[b] > 0 and projected > bar + 1e-7)
+            if any(need):
+                m32, arg32 = lanes.check(q)
+                m32, arg32 = m32.tolist(), arg32.tolist()
+                for b in range(B):
+                    if not need[b] or m32[b] <= 0.0:
+                        continue
+                    est = self._estimate(nz[b], total, m32[b], px[b])
+                    if m32[b] >= cfg.safety_margin:
+                        if best[b] is None or est > best[b].est:
+                            best[b] = _Best(est, m32[b], q[b].clone(), arg32[b])
+                    elif fallback is None or m32[b] > fallback.margin:
+                        fallback = _Best(est, m32[b], q[b].clone(), arg32[b])
+            above = margin >= cfg.target_margin
+            lam = torch.where(above & ~started, torch.full_like(lam, cfg.lam0), lam)
+            lam = torch.where(above & started, lam * cfg.lam_up, lam)
+            lam = torch.where(~above & started, lam * cfg.lam_down, lam)
+            started = started | above
+            gn = g / (g.abs().flatten(1).mean(1).view(B, *([1] * (g.dim() - 1))) + 1e-12)
+            push = (margin < cfg.kappa).float().view(B, *([1] * (g.dim() - 1)))
+            d = d + cfg.lr * gn * push
+            threshold = (cfg.lr * lam).view(B, *([1] * (g.dim() - 1)))
+            d = torch.sign(d) * torch.clamp(d.abs() - threshold, min=0.0)
+            if var_mask is not None:
+                d = d * var_mask
+            d = torch.maximum(torch.minimum(d, hi), lo)
+            elapsed_step = time.time() - now
+            step_time = elapsed_step if steps == 1 else 0.8 * step_time + 0.2 * elapsed_step
 
-            amp_margin = float(margin.item())
-            if 0.0 < amp_margin < cfg.safety_margin and amp_margin > fallback.margin + 0.05:
-                keep(self._evaluate(clean, torch.where(seed_q != 0, seed_q, q_hard.detach()), true_index))
-            if amp_margin >= cfg.safety_margin:
-                if first_flip_step < 0:
-                    first_flip_step = steps
-                    lam = cfg.l1_init
-                else:
-                    lam *= cfg.l1_up
-                q_cand = torch.where(seed_q != 0, seed_q, q_hard.detach())
-                nonzero = int((q_cand != 0).sum().item())
-                projected = estimate_score(
-                    linf=QUANT,
-                    rmse=rmse_for_unit_changes(nonzero, q_cand.numel()),
-                    margin=amp_margin,
-                    changed_pixels=int((q_cand != 0).any(dim=0).sum().item()),
-                    flipped=True,
-                    params=self.params,
-                )
-                if projected > best.est:
-                    keep(self._evaluate(clean, q_cand, true_index))
-            elif first_flip_step >= 0:
-                lam *= cfg.l1_down
         info["first_flip_step"] = first_flip_step
-        info["search_steps"] = steps
+        info["lanes"] = [
+            {"mode": int(lanes.mode[b]), "tau": round(float(lanes.tau[b]), 3), "target": int(lanes.j[b]),
+             "est": round(best[b].est, 5) if best[b] else 0.0, "class": best[b].cls if best[b] else None}
+            for b in range(B)
+        ]
+        candidates = [x for x in best if x is not None]
+        chosen = max(candidates, key=lambda x: x.est) if candidates else fallback
+        info["below_safety_fallback"] = not candidates and fallback is not None
 
-        # ---- prune
-        prune_steps = 0
-        if best.flipped and best.est > 0.0:
-            fraction = cfg.prune_start_fraction
-            while time.time() < deadline and fraction * max(1, best.nonzero) >= 1.0:
-                x = ((clean + best.q) / 255.0).unsqueeze(0).requires_grad_(True)
-                row = self._logits(x, amp=cfg.search_amp)[0]
-                (grad,) = torch.autograd.grad(self._margin(row, true_index), x)
-                contribution = (grad[0] * best.q).flatten()  # first-order margin gain of each entry
-                removable = ((best.q != 0) & (seed_q == 0)).flatten()
-                if not bool(removable.any()):
-                    break
-                scores = torch.where(removable, contribution, torch.full_like(contribution, float("inf")))
-                k = max(1, int(fraction * int(removable.sum().item())))
-                drop = torch.topk(scores, k, largest=False).indices
-                q_try = best.q.flatten().clone()
-                q_try[drop] = 0.0
-                candidate = self._evaluate(clean, q_try.view_as(best.q), true_index)
-                prune_steps += 1
-                if candidate.est > best.est:
-                    best = candidate
-                else:
-                    fraction /= 2.0
-        info["prune_steps"] = prune_steps
-        info["below_safety_fallback"] = best.est == 0.0 and fallback.flipped
-        if info["below_safety_fallback"]:
-            best = fallback
-            best.est = estimate_score(
-                linf=QUANT,
-                rmse=rmse_for_unit_changes(best.nonzero, best.q.numel()),
-                margin=best.margin,
-                changed_pixels=best.changed_pixels,
-                flipped=True,
-                params=self.params,
-            )
+        q_full = outside.clone()
+        if chosen is not None:
+            if window is not None:
+                q_full[window] = chosen.q
+            else:
+                q_full = chosen.q.clone()
+        elif window is not None:
+            q_full[window] = fixed
+        else:
+            q_full = fixed.clone()
+        adv_u8 = (clean + q_full).clamp(0, 255).round().to(torch.uint8)
 
-        adv_u8 = (clean + best.q).clamp(0, 255).round().to(torch.uint8).cpu()
+        # Final check on the exact image the validator will decode.
+        delta = adv_u8.float() - clean
+        row = self._validator_logits(adv_u8.float() / 255.0)
+        other = row.clone()
+        other[true_index] = -float("inf")
+        margin = float((other.max() - row[true_index]).item())
+        flipped = int(row.argmax().item()) != true_index
+        nonzero = int((delta != 0).sum().item())
+        changed_pixels = int((delta != 0).any(dim=0).sum().item())
+        est = estimate_score(
+            linf=QUANT if nonzero else 0.0,
+            rmse=rmse_for_unit_changes(nonzero, total),
+            margin=margin,
+            changed_pixels=changed_pixels,
+            flipped=flipped,
+            params=self.params,
+        )
+        info["adv_class"] = int(row.argmax().item())
         return AttackResult(
-            adv_u8=adv_u8,
-            est_score=best.est,
-            margin=best.margin,
-            flipped=best.flipped,
-            nonzero=best.nonzero,
-            changed_pixels=best.changed_pixels,
+            adv_u8=adv_u8.cpu(),
+            est_score=est,
+            margin=margin,
+            flipped=flipped,
+            nonzero=nonzero,
+            changed_pixels=changed_pixels,
             clean_index=clean_index,
             true_index=true_index,
-            steps=steps + prune_steps,
+            steps=steps,
             elapsed=time.time() - t0,
             info=info,
         )
+
+    def _retarget(self, lanes: _Lanes, best, d, lam, started, quantize, true_index: int) -> dict[str, Any]:
+        """Restart the weakest lanes as targeted searches on classes the lanes surfaced."""
+        B = self.B
+        _, arg = lanes.check(quantize(d))
+        # current top non-true class of every lane (fp32 logits are not exposed by the check kernel,
+        # so use each lane's best candidate class and its current argmax when that is not the true class)
+        surfaced: list[int] = []
+        for b in range(B):
+            for c in ([best[b].cls] if best[b] is not None else []) + [int(arg[b])]:
+                if c != true_index and c not in surfaced:
+                    surfaced.append(c)
+        order = sorted(range(B), key=lambda b: best[b].est if best[b] is not None else -1.0)
+        free = order[: min(self.cfg.n_switch, B)]
+        keep_classes = {best[b].cls for b in range(B) if b not in free and best[b] is not None}
+        targets = [c for c in surfaced if c not in keep_classes][: len(free)]
+        for b, c in zip(free, targets):
+            lanes.j[b] = c
+            lanes.mode[b] = 0
+            d[b] = 0.0
+            lam[b] = 0.0
+            started[b] = False
+            best[b] = None
+        return {"targets": targets, "lanes": free[: len(targets)]}

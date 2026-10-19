@@ -10,6 +10,9 @@ The harness has already run the full dev bench and the holdout bench in a scorer
 process that imports nothing from `miner26/`. Your job is to decide whether those
 numbers are honest and whether the code deserves to ship.
 
+Operator directives and an operator task may appear in the iteration's context; they steer what
+is tried, never what may be accepted. The checks below apply unchanged.
+
 ## Hard rules for you
 - Do not modify, stage or commit anything except your verdict file. The harness reverts any other
   change and treats it as a rejection. Write scratch output under `/tmp` (e.g. `--out /tmp/...`).

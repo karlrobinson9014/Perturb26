@@ -6,21 +6,18 @@ Take scanning rank 1 on Perturb: mean official score above every competitor, con
 Competitor envelope on dev = 0.9784 mean best-per-image, 0.9858 max (`notes/competition.md`).
 Ceiling 0.99303. Loop stop target `TARGET_SCORE` = 0.993 (harness/loop.env).
 
-## Current state (2026-10-19, bootstrap)
-- Product: `miner26/` v0 attack (quantized STE search + L1 + greedy prune + novelty pad), live neuron
-  subclassing upstream `PerturbMiner`, `--dry-run` mode.
-- Bench: `bench/run_bench.py` with the official upstream scorer under 3 numeric variants; dev manifest of 64
-  real task images (`bench/manifests/dev.json`); holdout (128, test split) only on the GPU box, outside the repo.
-- Tests: contract tests pass on CPU (scoring parity, alias collision, attack admissibility on TinyNet).
-- v0 on the real model, CPU only, 2 dev images, 300 s budget: both flip at 1/255 (first flip at step 9),
-  official 0.963 / 0.942, mean 0.953, versus the best competitor on the same images 0.981 / 0.975.
-  Margin sits at the 1.0 safety floor and the nonzero count is high: room to improve.
-  **Not yet run on GPU at the live 22 s budget.** No accepted best yet: the harness seeds
-  `status/best.json` from HEAD on first start.
-- Harness: passed independent review after three rounds (findings fixed: ledger deadlock, rename bypass,
-  allowlist, scorer isolation, integrity checks, holdout handling). Accept, reject, path-violation,
-  plant-a-sitecustomize and noop paths were exercised end to end on CPU with a fake claude binary.
-  Residual risk: with `AGENT_RUN_PREFIX` empty, agents run as the harness user (README "Isolation").
+## Current state (2026-10-19, human-supervised session)
+- Product: `miner26/` v1 attack: 4-lane batched ISTA (margin / LSE / -logit_true objectives) on CUDA graphs,
+  weak lanes re-target surfaced classes at 35 % of the budget; generic eager path for non-crop geometries.
+  Dev (16 images): **0.9738** (v0 0.9553), 16/16 success. Competitors' best per image on the same images 0.9771;
+  live rank 1 (uid 36) averages 0.9801 (`notes/competition.md`).
+- The gap is the target class (research_log 2026-10-19): aimed at the class the leaders chose, the same search
+  matches them. First research priority: target-class discovery (backlog).
+- Harness: operator directives / idea queue ($OPERATOR_DIR, dashboard), Consensus + SciSpace for literature
+  (`notes/literature.md`), other claude.ai connectors denied, IS_SANDBOX for root containers, dashboard
+  (`harness/dashboard.py`, pm2 app perturb26-dashboard), blocked build items no longer pin build mode.
+- Residual risk: agents run as root (IS_SANDBOX=1), so they could read the holdout (README "Isolation").
 
 ## Recent iterations
 - 2026-10-19 iter 0 (setup session): scaffold, v0 attack, harness, competitor proxy 0.9784.
+- 2026-10-19 (setup session): GPU baselines, CUDA-graph v1 attack 0.9738 on 16 dev images, class-choice finding, operator dashboard.

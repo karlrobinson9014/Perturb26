@@ -8,7 +8,9 @@ next iteration can pick up.
 ## 1. Orient (read before you change anything)
 - `CLAUDE.md`: rules, layout, commands. Follow it.
 - `status/STATUS.md`: current state and what the last iterations did.
-- `status/backlog.md`: pick the **first unchecked `[build]` item** (top = highest priority).
+- `status/backlog.md`: pick the **first unchecked `[build]` item** (top = highest priority) that is not
+  marked `[blocked: ...]`. If the harness context below contains an **Operator task for THIS iteration**,
+  do that task instead; operator directives override the defaults in this prompt.
 - `notes/`: what is already known (`scoring.md`, `timing.md`, `research_log.md`, `ideas.md`).
 - `git log --oneline -15`
 
