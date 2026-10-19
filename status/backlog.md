@@ -18,8 +18,9 @@ Format: `- [ ] [build] title: details / acceptance`. Tick with `[x]` and add the
 - [x] [build] Live timing probe `tools/task_probe.py` (2026-10-19, from the dev machine): task visible at
   boundary + 3.0 s median, download 0.3 s, GET /task median 2 s with spikes to 8 s and timeouts. 22 s budget
   confirmed safe. notes/timing.md. Re-run from the GPU box.
-- [ ] [build] Fast task fetch in the live miner: override upstream's fetch with a ~3 s per-request timeout and
-  0.5 s retries (upstream uses 10 s / 2 s; one timeout can cost the round). Unit test with a fake server.
+- [x] [build] Fast task fetch in the live miner (2026-10-19, `miner26/fetch.py`): 3 s per request, 0.5 s retries
+  until the task deadline, errors retried instead of skipping the round, stale (previous-epoch) tasks rejected,
+  image download retried. `tests/test_fetch.py` (fake HTTP server). Live: task seen at boundary + 7.3 s / + 2.2 s.
 - [ ] [build] Live dry runs: `python -m miner26.neuron --dry-run` on 5 consecutive live tasks; record official
   scores and wall-clock since boundary in research_log.
 - [ ] [build] v1 regression test on the GPU: graph-captured lanes give the same margins and gradients as the

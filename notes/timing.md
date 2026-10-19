@@ -33,3 +33,8 @@ Consequences:
 - Re-run the probe from the GPU box; latency there may differ.
 
 Open question: Hippius vs R2 upload latency from the miner box.
+
+## 2026-10-19 from the GPU box (iter 3, `miner26.fetch.fetch_new_task`, 3 s timeout / 0.5 s retries)
+2 boundaries: new task seen at + 7.3 s and + 2.2 s (3 attempts each), image download ~0.6 s. The 7.3 s case
+leaves ~21 s of attack under submit-by 34 s and a 5 s reserve: still >= BENCH_BUDGET-ish, but tight. Worth a
+longer probe (`tools/task_probe.py`) from this box.

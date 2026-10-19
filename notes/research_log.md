@@ -95,3 +95,17 @@ Plan: `tools/class_eval.py` (est only, same 16 images as results/dev16-v1.json) 
   so margin is not the gap. Best competitor beats us on **64/64** images by mean 0.0035; their best responses'
   RMSE median 0.00069 vs ours 0.00086 (their nonzero fraction median 3.1 %). The gap is RMSE / sparsity at the
   same margin (and, per iter 1, the class that makes low RMSE possible).
+
+## 2026-10-19 iter 3 (build): fast task fetch in the live miner (`miner26/fetch.py`)
+Upstream `_fetch_new_task_at_boundary` lets one `GET /task` timeout (10 s) raise out of the loop, which skips the
+round; its retries sleep 2 s. Now: 3 s per request (`PERTURB26_FETCH_TIMEOUT_SECONDS`), 0.5 s between retries,
+errors and timeouts retried until boundary + 34 - upload reserve - 5 s (`PERTURB26_MIN_ATTACK_SECONDS`). The
+pre-boundary snapshot uses the same loop until boundary - 1 s. A task is "new" only if its id differs from the last
+one *and* its epoch prefix is not older than the current boundary, so a failed snapshot can no longer make the
+miner attack the previous round's task. `_process_task` takes the boundary from the id epoch, records the task as
+processed, and downloads the image with 4 s per attempt plus retries. Tests: `tests/test_fetch.py` (local fake
+HTTP server that hangs / returns 500 before serving; upstream `get_current_task` / `image_url_to_b64` unchanged).
+Live from the GPU box (inline script calling `fetch_new_task` exactly as the miner does, 2 boundaries):
+new task seen at boundary + 7.3 s (3 attempts) and + 2.2 s (3 attempts), image downloaded 0.6 s later.
+`python -m miner26.neuron --dry-run`: task 1792417440-hf-..., official 0.97051, margin 10.035, 317 steps, 22 s.
+Also fixed: dry run printed nothing because bittensor's root handlers made `logging.basicConfig` a no-op (`force=True`).

@@ -11,7 +11,8 @@ upload and signed submission, and replaces only the attack and its timing.
 Timing: the validator reads ``GET /submits`` 40 s after the task boundary and
 takes whatever is there on the first non-empty poll, so the response must be
 submitted before ``boundary + SUBMIT_BY_SECONDS``. The attack deadline is that
-moment minus a measured upload/submit reserve (EMA).
+moment minus a measured upload/submit reserve (EMA). Task fetch and image
+download use short per-request timeouts with quick retries (``miner26.fetch``).
 """
 from __future__ import annotations
 
@@ -27,12 +28,15 @@ import torch
 
 from miner26._upstream import ensure_bittensor_importable
 from miner26.attack import AttackConfig, Attacker
+from miner26.fetch import download_with_retries, fetch_new_task, task_epoch
 from miner26.imaging import b64_to_u8, u8_to_b64
 
 logger = logging.getLogger("miner26")
 
 SUBMIT_BY_SECONDS = float(os.getenv("PERTURB26_SUBMIT_BY_SECONDS", "34"))
 UPLOAD_RESERVE_SECONDS = float(os.getenv("PERTURB26_UPLOAD_RESERVE_SECONDS", "5"))
+# Stop looking for the task when less than this much attack time would remain.
+MIN_ATTACK_SECONDS = float(os.getenv("PERTURB26_MIN_ATTACK_SECONDS", "5"))
 
 
 def _attack_config_from_env(hotkey: str = "") -> AttackConfig:
@@ -58,15 +62,18 @@ def dry_run(budget: float) -> int:
     from perturbnet.image_io import image_url_to_b64
     from perturbnet.model import load_efficientnet_v2_l
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+    # force: bittensor installs its own root handlers, which made basicConfig a no-op (dry run printed nothing)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", force=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_efficientnet_v2_l(device)
     attacker = Attacker(model, device, _attack_config_from_env())
-    task = get_current_task(base_url=C.PERTURB_API_BASE_URL, timeout_seconds=C.PERTURB_API_TIMEOUT_SECONDS)
+    task = fetch_new_task(
+        get_current_task, base_url=C.PERTURB_API_BASE_URL, last_task_id=None, boundary=0.0, deadline=time.time() + 15
+    )
     if task is None:
         logger.error("no current task")
         return 1
-    clean_b64 = image_url_to_b64(task.image_url, timeout_seconds=C.PERTURB_API_TIMEOUT_SECONDS)
+    clean_b64 = download_with_retries(image_url_to_b64, task.image_url, deadline=time.time() + 15)
     t0 = time.time()
     result = attacker.run(b64_to_u8(clean_b64), deadline=t0 + budget)
     adv_b64 = u8_to_b64(result.adv_u8)
@@ -85,6 +92,7 @@ def run_miner() -> int:
     from neurons.miner import PerturbMiner, build_config
     from perturbnet import constants as C
     from perturbnet.api_client import submit_miner_response
+    from perturbnet.api_client import get_current_task
     from perturbnet.image_io import image_pixel_hash, image_url_to_b64
 
     class Perturb26Miner(PerturbMiner):
@@ -94,14 +102,47 @@ def run_miner() -> int:
             self.attacker = Attacker(self.model, self.device, _attack_config_from_env(hotkey))
             self.upload_reserve = UPLOAD_RESERVE_SECONDS
 
+        def _api_base_url(self) -> str:
+            return str(getattr(self.config.perturb, "api_base_url", C.PERTURB_API_BASE_URL))
+
+        def _cadence(self) -> int:
+            return int(getattr(self.config.perturb, "task_cadence_seconds", C.TASK_CADENCE_SECONDS))
+
+        def _snapshot_current_task_before_boundary(self) -> None:
+            # Upstream: one request with a 10 s timeout. Here: short requests until 1 s before the boundary.
+            cadence = max(1, self._cadence())
+            prefetch = float(getattr(self.config.perturb, "task_pre_boundary_fetch_seconds", C.TASK_PRE_BOUNDARY_FETCH_SECONDS))
+            prefetch = min(max(2.0, prefetch), float(cadence))
+            now = time.time()
+            boundary = (int(now // cadence) + 1) * cadence
+            if boundary - prefetch > now:
+                time.sleep(boundary - prefetch - now)
+            task = fetch_new_task(
+                get_current_task, base_url=self._api_base_url(), last_task_id=None, boundary=0.0, deadline=boundary - 1.0
+            )
+            if task is not None:
+                self.last_processed_task_id = task.task_id
+                logger.info(f"Pre-boundary baseline task_id={self.last_processed_task_id}")
+
+        def _fetch_new_task_at_boundary(self):
+            boundary = _task_boundary(time.time(), self._cadence())
+            return fetch_new_task(
+                get_current_task,
+                base_url=self._api_base_url(),
+                last_task_id=self.last_processed_task_id,
+                boundary=boundary,
+                deadline=boundary + SUBMIT_BY_SECONDS - self.upload_reserve - MIN_ATTACK_SECONDS,
+            )
+
         def _process_task(self, *, task_id: str, image_url: str) -> None:
             perturb = self.config.perturb
-            cadence = int(getattr(perturb, "task_cadence_seconds", C.TASK_CADENCE_SECONDS))
             timeout = float(getattr(perturb, "api_timeout_seconds", C.PERTURB_API_TIMEOUT_SECONDS))
             started = time.time()
-            boundary = _task_boundary(started, cadence)
-            clean_b64 = image_url_to_b64(image_url, timeout_seconds=timeout)
+            epoch = task_epoch(task_id)
+            boundary = float(epoch) if epoch is not None and abs(started - epoch) < 60 else _task_boundary(started, self._cadence())
+            self.last_processed_task_id = task_id
             deadline = boundary + SUBMIT_BY_SECONDS - self.upload_reserve
+            clean_b64 = download_with_retries(image_url_to_b64, image_url, deadline=deadline - MIN_ATTACK_SECONDS)
             result = self.attacker.run(b64_to_u8(clean_b64), deadline=deadline)
             adv_b64 = u8_to_b64(result.adv_u8)
 
