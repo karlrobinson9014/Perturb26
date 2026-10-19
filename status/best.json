@@ -1,0 +1,9 @@
+{
+ "iter": 0,
+ "commit": "1223aac",
+ "dev_score": 0.9748351167024112,
+ "holdout_score": 0.975643070997153,
+ "holdout_peak": 0.975643070997153,
+ "dev_result": "results/harness/dev-seed-1223aac.json",
+ "accepted_at": "2026-10-19T11:35:22Z"
+}
