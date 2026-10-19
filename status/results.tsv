@@ -1,2 +1,3 @@
 ts	iter	mode	commit	dev_score	holdout_score	decision	reason
 2026-10-19T11:35:22Z	0	seed	1223aac	0.9748351167024112	0.975643070997153	seed	baseline of HEAD
+2026-10-19T13:31:08Z	1	research	ded9c99	0.9749436792749558		discard	no_gain (best 0.9748351167024112)
