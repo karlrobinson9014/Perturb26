@@ -2,3 +2,4 @@ ts	iter	mode	commit	dev_score	holdout_score	decision	reason
 2026-10-19T11:35:22Z	0	seed	1223aac	0.9748351167024112	0.975643070997153	seed	baseline of HEAD
 2026-10-19T13:31:08Z	1	research	ded9c99	0.9749436792749558		discard	no_gain (best 0.9748351167024112)
 2026-10-19T13:39:28Z	2	build	52d713c			keep	no miner26 change; gates pass
+2026-10-19T14:17:02Z	3	build	04c24e5	0.97479978936211		keep	build change, no regression (reviewed at next promotion)
