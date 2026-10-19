@@ -51,12 +51,22 @@ EOF
 
 prompt_file="$(mktemp)"
 prompt > "$prompt_file"
-log "iter $iter: reviewer start (model=$REVIEW_MODEL base=${base:0:8})"
-# shellcheck disable=SC2086
-run_isolated "$REVIEW_TIMEOUT" "$prompt_file" "$LOGS/review-$tag.jsonl" "$LOGS/review-$tag.jsonl.err" \
-  $AGENT_RUN_PREFIX "$CLAUDE_BIN" -p --model "$REVIEW_MODEL" --max-turns "$MAX_TURNS" \
-  --output-format stream-json --verbose $CLAUDE_FLAGS --disallowedTools "$CLAUDE_DENY_TOOLS"
-log "iter $iter: reviewer exit rc=$?"
+# A session cut off by a claude usage limit without a verdict is retried after the reset
+# rather than counted as a rejection.
+for attempt in 1 2 3; do
+  log "iter $iter: reviewer start (model=$REVIEW_MODEL base=${base:0:8} attempt=$attempt)"
+  # shellcheck disable=SC2086
+  run_isolated "$REVIEW_TIMEOUT" "$prompt_file" "$LOGS/review-$tag.jsonl" "$LOGS/review-$tag.jsonl.err" \
+    $AGENT_RUN_PREFIX "$CLAUDE_BIN" -p --model "$REVIEW_MODEL" --max-turns "$MAX_TURNS" \
+    --output-format stream-json --verbose $CLAUDE_FLAGS --disallowedTools "$CLAUDE_DENY_TOOLS"
+  log "iter $iter: reviewer exit rc=$?"
+  limit_wait="$(usage_limit_wait "$LOGS/review-$tag.jsonl")"
+  [[ -n "$limit_wait" && ! -s "$verdict_file" && "$attempt" -lt 3 ]] || break
+  git reset -q --hard HEAD && git clean -qfd  # whatever the cut-off session left
+  rm -f "$verdict_file"
+  log "iter $iter: reviewer hit the claude usage limit; retrying in ${limit_wait}s"
+  sleep "$limit_wait"
+done
 rm -f "$prompt_file"
 
 # The reviewer may write only its verdict file. Anything else it changed is reverted

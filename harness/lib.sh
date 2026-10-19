@@ -324,3 +324,38 @@ bench_score() {  # bench_score manifest out_json since_epoch
   fi
   json_get "$out" 'd["summary"]["mean_official"]'
 }
+
+# Seconds to wait if the agent session ended on a claude usage limit ("You've hit your session
+# limit · resets 7:30pm (UTC)"), else nothing. Such a session did no work, so it must not use up
+# an iteration or a review: iterations 7-200 of the first run were all limit no-ops.
+usage_limit_wait() {  # usage_limit_wait jsonl
+  "$PY" - "$1" <<'EOF'
+import datetime, json, re, sys
+text = ""
+try:
+    for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+        if line.startswith("{"):
+            event = json.loads(line)
+            if event.get("type") == "result":
+                text = str(event.get("result", ""))
+except Exception:
+    pass
+if not re.search(r"hit your .*limit", text, re.I):
+    sys.exit(0)
+wait = 1800
+m = re.search(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)(?:\s*\(([^)]+)\))?", text, re.I)
+if m:
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(m.group(4) or "UTC")
+        hour = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0)
+        now = datetime.datetime.now(tz)
+        reset = now.replace(hour=hour, minute=int(m.group(2) or 0), second=0, microsecond=0)
+        if reset <= now:
+            reset += datetime.timedelta(days=1)
+        wait = int((reset - now).total_seconds())
+    except Exception:
+        pass
+print(min(wait, 6 * 3600) + 120)
+EOF
+}
