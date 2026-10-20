@@ -73,3 +73,7 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 
 - [ ] Learned sparse universal init (Meta Adversarial Perturbations, Yuan 2021) for EfficientNetV2-L from public train images (never dev): seed discovery lanes so they surface far classes (leaders' best class clean rank median ~90).
 - [ ] The hard image (clean class held to margin ~1-5 only, 0.93-0.935): it alone costs ~0.0007 of the mean. Find out why no lane reaches margin 10 there (target class? budget?) and give such images more lanes on the strongest class (iter 211).
+
+- [tried iter 220, neutral] Snapshot-intersection drops: final q AND earlier verified bests of the same lane (`consensus_time`):
+  1.2e-4..3.7e-4 logit/value, 3-10x cheaper than random drops but 2-4x above break-even; 16-img -0.00017 (basin noise).
+  First-order "add k" swaps fail: top-|g| zero adds barely raise the margin and lower it in bulk (exact fp32, 1000 adds -0.48).

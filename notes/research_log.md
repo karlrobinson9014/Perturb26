@@ -778,3 +778,41 @@ Result (negative; code in this commit: `sign_drop` option, 0 = off, behaviour un
   along the path. With iters 202/212-218, prune/swap is closed in every placement: before, beside, inside and after
   the search, at any time budget (iter 217). No full dev (no candidate).
 - Next: the basin, not the polish (target classes the lanes never surface; competitor class choice, `notes/competition.md`).
+
+## 2026-10-20 iter 220: operator directive (ninth time): exact batched drops along the leader's own history (snapshot intersections)
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212-219 ranked drop/swap candidates by first-order cost,
+|d|, randomness or sign, and every family stalls at ~5e-5/image (iter 217: +1.6e-4/image with unlimited time, because
+single-entry costs interact: a joint drop of 1000 "cheap" entries costs ~1 logit). Concrete reason this run differs:
+the candidate family is not ranked by any local quantity. It is the leader's *own* verified history: the intersection
+of the final best q with earlier fp32-verified bests of the same lane and class (sign-agreeing entries only), single
+and cumulative over the last 1..8 snapshots. ISTA's late phase swaps entries in and out (iter 216), so entries that
+are in the final q but not in a snapshot that also held margin ~10 are the recent churn; the intersection is a large,
+structured drop whose joint effect the network has already "seen" in part (each snapshot held margin with its own
+support). If two snapshots each hold 10 logits, their intersection may hold most of it at e.g. 10-20 % fewer values
+(~+5e-4..1e-3/image at 36k nonzeros), which no first-order ranking reaches.
+Plan: `consensus_time` (s, 0 = off) reserve at the end; history of the last 8 verified bests per lane (int8, reset on
+re-target); candidates scored with the lanes' fp32 check in batches of B (exact margin, safety margin 1.0), best est
+kept. Probe the candidates' (nonzero, margin) on a few dev images, then `--limit 16` vs the same 16 images in
+`results/harness/dev-iter209-8c572ce.json` (0.97630); full dev only if > +0.0003.
+Result (neutral/negative; code in this commit: `consensus_time` (0 = off, behaviour unchanged) / `consensus_hist` /
+`consensus_add` options, `Attacker._consensus`):
+- Probe (scratch script, Attacker.run at 22 s, dev images 0-3, `consensus_time` 0.3, 15 intersection candidates each,
+  exact fp32 margin): intersections cost 1.2e-4..3.7e-4 logit per dropped value, e.g. image 0 (22.5k nz, 10.00):
+  -405 values -> 9.85, -2975 -> 7.91; image 3 (60.2k, 10.00): -991 -> 9.88, -4226 -> 9.27; image 1 (48k):
+  -8000 -> -1.7 (flip lost). That is 3-10x cheaper per value than random drops (iter 214, ~1e-3) but still
+  2-4x above break-even (~9e-5 at 22k, ~5e-5 at 60k). 0 accepts on images that sit at margin 10.0.
+- Swaps (drop = the cheapest intersections per logit, then add the top-|g| zeros, in the right sign, to cover the deficit
+  at 1x/2x first order) do not work: adds are far from linear at this point. Exact fp32 check (validator path,
+  fp32 targeted gradient, dev image 0, margin 10.046): +50 / +200 / +1000 / +4000 top-gain adds -> 10.055 / 9.93 /
+  9.56 / 10.11, where first order predicts roughly +0.17 / +0.6 / +1.5 / +2.5. More adds -> lower margin in the swap
+  candidates too (e.g. 9.82 at 1x, 9.63 at 2x).
+- `python -m bench.run_bench --limit 16 --attack-config '{"consensus_time":0.4}' --out results/dev16-iter220-cons04.json`:
+  **0.97613** vs 0.97630 on the same 16 images in `results/harness/dev-iter209-8c572ce.json` (-0.00017), 6/16 up,
+  16/16 success, 0 variant disagreements, time_max 21.67 s. One image (...053148Z... 2nd, -0.0026, 43k -> 57k nz,
+  margin 10.45) ended in another basin; without it -0.00001. The overshoot image ...063626Z-0002 gains again
+  (+0.00032, 22.8k -> 19.8k, margin 9.85).
+- Conclusion: the ninth prune/swap variant (structured drops from the leader's own verified history, plus swaps) is
+  neutral like the other eight. New fact: the "add" half of "drop k and add k" is the broken half. At the converged point
+  the top-gradient zeros barely raise the margin and in bulk lower it, so swaps cannot buy back what drops cost. The
+  only recoverable piece is still margin overshoot (~25 % of images, +1e-4..9e-4 each). No full dev (no candidate).
+- Next: same as iters 214-219, the basin (class choice / independent second search), not the polish.
