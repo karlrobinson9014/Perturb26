@@ -555,3 +555,50 @@ behaviour unchanged):
   No full dev bench (no candidate).
 - Next: stop spending iterations on polish. Sparsity levers that change the basin: classes the lanes never surface
   (leaders' best class has clean rank median ~90), support freezing late in the budget (Lin 2023), l0 change control.
+
+## 2026-10-20 iter 214: operator directive (third time): prune + swap, exact batched scoring, 64 per forward
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212/213 closed prune/swap around the ISTA point
+(-0.0006 / -0.00017..-0.00036 / -0.00003..-0.00008 on 16 images). Concrete reason to try again: iter 212 scored 32
+candidates as two fp32 batches of 16 (~0.27 s/round), and its polish rate per second was about ISTA's, so a cheaper
+round could tip it. Here all 64 candidates go through one fp16 forward (screen), and only the 4 best projected are
+scored in fp32 (exact estimate, safety margin as usual). I also measured what the move set can buy at all.
+Probes (scratch scripts, Attacker.run at 22 s, final point, crop path, RTX 4090):
+- Forward cost per image: fp32 8.2 ms (batch 16 or 64), fp16 autocast 4.3 ms. fp16 screening is only 1.9x cheaper,
+  not the ~5x I had assumed. fp16-vs-fp32 error on a move's margin delta: sd 0.004-0.008 logit.
+- Random drops of k nonzeros (dev images 0-1, 22k / 45k nonzeros) cost ~0.95e-3 logit per value
+  (k=20/100/500: -0.018 / -0.092 / -0.49). A typical nonzero is not loose.
+- Break-even: one value is worth 2.7e-7 score at 22k nonzeros (1.6e-7 at 60k), and one logit below 10 is worth
+  0.003, so a drop pays only if it costs < ~9e-5 logit per value (5e-5 at 60k).
+- First-order-ranked moves at the final point (dev images 2-5, nonzeros 22k / 60k / 60k / 71k, margins ~10.0),
+  exact margin delta:
+  | move | img2 | img3 | img4 | img5 |
+  |---|---|---|---|---|
+  | drop 10 cheapest | +0.055 | -0.003 | +0.005 | +0.006 |
+  | drop 50 | +0.110 | -0.011 | +0.002 | -0.085 |
+  | drop 200 | +0.198 | -0.072 | -0.120 | -0.363 |
+  | drop 1000 | -1.08 | -0.34 | -1.21 | -1.07 |
+  | add 50 best | +0.196 | +0.009 | +0.031 | +0.016 |
+  | drop 400 + add 200 | -0.025 | -0.27 | -0.84 | -0.84 |
+  The first ~10-200 cheapest entries are free (some even work against the margin: g*q < 0 down to -0.014), and
+  beyond that the cost per value jumps above break-even (interactions: the joint drop of 1000 costs far more than
+  the sum of the linear costs). So the exact local search can remove at most a few hundred values per image, i.e.
+  ~200 x 2.7e-7 = 5e-5 per image. This bounds the directive's route: at 1/255, "1 % -> 0.3 %" means removing ~70 %
+  of the support, and the final point has no such slack under single-entry or swap moves.
+Measurement plan: `polish_fraction` 0.9, `polish_batch` 64, `polish_screen` 4 on `--limit 16` vs the same 16 images in
+`results/harness/dev-iter209-8c572ce.json` (0.97630); full dev only if it beats that by > +0.0003.
+Result (neutral; code in this commit: iter 212's `polish_fraction` / `polish_batch` / `_polish` re-applied plus
+`polish_screen`, all off by default, behaviour unchanged):
+- `python -m bench.run_bench --limit 16 --attack-config '{"polish_fraction":0.9,"polish_batch":64,"polish_screen":4}'
+  --out results/dev16-iter214-screen64.json`: **0.97627** vs 0.97630 on the same 16 images (-0.00003), 5/16 up
+  (largest +0.00056, worst -0.00067), 16/16 success, 0 variant disagreements, nonzero median 45.5k (45.1k).
+  time_max 22.28 s on the first image (over the 22 s budget): the first fp16 batch-64 forward runs a ~1 s warmup /
+  algorithm pick. Pre-warm it in `__init__` before anyone turns this on. Later images 21.70-21.83 s.
+- vs iter 212 (p0.9 batch 16, fp32: -0.00017): the cheaper screen recovers most of the loss, but it stays at noise
+  level, which matches the probe bound (~5e-5/image at most from local moves).
+- Conclusion: three operator-directive iterations (212, 213, 214) plus iter 202 put exact prune/swap around the
+  ISTA point at -0.0004..0. The final point is locally tight: the free part is the few hundred entries that oppose
+  the margin, worth ~5e-5 per image. The 1 % -> 0.3 % route needs ~70 % fewer nonzeros at the same margin. That
+  is a different solution (a different class or support basin), not a polish of this one. No full dev bench
+  (no candidate).
+- Next: (a) sign-aware rounding inside ISTA (drop entries whose gradient opposes their sign), see ideas.md;
+  (b) target classes never surfaced by the lanes; (c) late-budget support freezing.
