@@ -295,23 +295,42 @@ h1{font-size:16px;margin:0 8px 0 0}h2{font-size:13px;text-transform:uppercase;le
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.mute{color:var(--mute)}
 button,select{font:inherit;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-main{display:grid;grid-template-columns:280px minmax(0,1fr) 760px;gap:12px;padding:12px 16px}
-@media (max-width:1400px){main{grid-template-columns:1fr}}
+html,body{height:100%}body{display:flex;flex-direction:column;overflow:hidden}
+header{flex:none}
+/* Resizable layout: three columns on top, the ledger/log panel below; sizes are CSS variables set by dragging. */
+#app{flex:1;min-height:0;display:grid;padding:8px 12px 12px;
+  grid-template-columns:var(--left,280px) 8px minmax(240px,1fr) 8px var(--right,760px);
+  grid-template-rows:minmax(160px,1fr) 8px var(--bottom,300px)}
+#app>.panel{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column}
+#p-left{grid-area:1/1}#p-feed{grid-area:1/3}#p-right{grid-area:1/5}#p-bottom{grid-area:3/1/4/6}
+.gutter{background:transparent;border-radius:4px;touch-action:none;user-select:none}
+.gutter:hover,.gutter.drag{background:var(--line)}
+.gutter.v{cursor:col-resize}.gutter.h{cursor:row-resize}
+#g-left{grid-area:1/2}#g-right{grid-area:1/4}#g-bottom{grid-area:2/1/3/6}
+body.dragging{cursor:inherit;user-select:none}body.dragging iframe{pointer-events:none}
+@media (max-width:900px){
+  body{overflow:auto;display:block}
+  #app{display:flex;flex-direction:column;gap:12px}
+  #app>.panel{overflow:visible}
+  .gutter{display:none}
+  #feed{height:70vh;flex:none}
+}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
-.list{max-height:60vh;overflow:auto}.list div{padding:6px 8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.list{flex:1;min-height:80px;overflow:auto}.list div{padding:6px 8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
 .list div:hover,.list div.sel{background:var(--code)}
-#feed{height:72vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
+#feed{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .ev{border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-word;font-size:13px}
 .ev.text{background:transparent;border-left:3px solid var(--accent)}.ev.thinking{color:var(--mute);font-style:italic;border-left:3px solid var(--line)}
 .ev.tool{background:var(--tool);font-family:ui-monospace,Menlo,monospace;font-size:12px}.ev.result{background:var(--res);font-family:ui-monospace,Menlo,monospace;font-size:12px;max-height:240px;overflow:auto}
 .ev.result.err{border-left:3px solid var(--bad)}.ev.final,.ev.init{color:var(--mute);font-size:12px}
 .ev .tag{font-weight:600;font-family:system-ui;font-size:11px;color:var(--mute);display:block;margin-bottom:2px}
-textarea{width:100%;min-height:90px;font:13px/1.4 ui-monospace,Menlo,monospace;background:var(--code);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px}
+textarea{width:100%;min-height:90px;resize:vertical;font:13px/1.4 ui-monospace,Menlo,monospace;background:var(--code);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px}
 .row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .item{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-top:6px;white-space:pre-wrap;font-size:12px;font-family:ui-monospace,Menlo,monospace}
 table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-pre.log{max-height:260px;overflow:auto;background:var(--code);padding:8px;border-radius:6px;font-size:11px;white-space:pre-wrap}
-.sec{margin-top:14px}.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+pre.log{flex:1;min-height:80px;overflow:auto;background:var(--code);padding:8px;border-radius:6px;font-size:11px;white-space:pre-wrap}
+.sec{margin-top:14px}
+@media (max-width:900px){#feed{flex:none;height:70vh}.list{flex:none;max-height:50vh}pre.log{flex:none;max-height:40vh}}.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
 </style></head><body>
 <header>
   <h1>Perturb26 loop</h1>
@@ -321,19 +340,21 @@ pre.log{max-height:260px;overflow:auto;background:var(--code);padding:8px;border
   <button onclick="if(confirm('Stop the loop after the current iteration?'))ctl('stop')">Stop</button>
   <button class="primary" onclick="ctl('start')">Start</button>
 </header>
-<main>
-  <section class="panel">
+<main id="app">
+  <section class="panel" id="p-left">
     <h2>Sessions</h2><div id="sessions" class="list"></div>
     <div class="sec"><h2>Best</h2><div id="best" class="kv"></div></div>
   </section>
-  <section class="panel">
+  <div class="gutter v" id="g-left" title="Drag to resize; double-click to reset"></div>
+  <section class="panel" id="p-feed">
     <div class="row" style="margin:0 0 8px"><h2 style="margin:0" id="title">Session</h2><span style="flex:1"></span>
       <label class="mute"><input type="checkbox" id="follow" checked> follow live</label>
       <label class="mute"><input type="checkbox" id="think"> thinking</label>
       <button onclick="showPrompt()">Prompt</button></div>
     <div id="feed"></div>
   </section>
-  <section class="panel">
+  <div class="gutter v" id="g-right" title="Drag to resize; double-click to reset"></div>
+  <section class="panel" id="p-right">
     <h2>Operator directives (every iteration)</h2>
     <textarea id="dir"></textarea>
     <div class="row"><button class="primary" onclick="saveDir()">Save directives</button><span id="dirmsg" class="mute"></span></div>
@@ -344,8 +365,9 @@ pre.log{max-height:260px;overflow:auto;background:var(--code);padding:8px;border
       <div id="queue"></div></div>
     <div class="sec"><h2>Done</h2><div id="done"></div></div>
   </section>
-  <section class="panel" style="grid-column:1/-1">
-    <h2>Ledger</h2><div style="overflow:auto"><table id="ledger"></table></div>
+  <div class="gutter h" id="g-bottom" title="Drag to resize; double-click to reset"></div>
+  <section class="panel" id="p-bottom">
+    <h2>Ledger</h2><div style="overflow:auto;flex:none;max-height:45%"><table id="ledger"></table></div>
     <div class="sec"><h2>Harness log</h2><pre class="log" id="hlog"></pre></div>
   </section>
 </main>
@@ -386,6 +408,29 @@ async function refresh(){const s=await api('api/state');
   const cols=['ts','iter','mode','commit','dev_score','holdout_score','decision','reason'];
   $('ledger').innerHTML='<tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>'+s.ledger.map(r=>'<tr>'+cols.map(c=>`<td class="${c==='decision'?(r[c]==='accept'?'ok':r[c]==='discard'?'bad':''):''}">${esc(r[c])}</td>`).join('')+'</tr>').join('');
   $('hlog').textContent=s.harness_log;}
+// Resizable panels: drag a divider; sizes persist per browser (localStorage, best effort); double-click resets.
+const MIN={left:160,right:240,bottom:120}, KEY='perturb26-dash-sizes';
+function defaults(){const w=window.innerWidth,h=window.innerHeight;  // scale with the window until the user drags
+  return {left:Math.round(Math.min(280,Math.max(200,0.17*w))),right:Math.round(Math.min(760,Math.max(300,0.38*w))),
+          bottom:Math.round(Math.min(300,Math.max(160,0.28*h)))}}
+function loadSizes(){try{return Object.assign(defaults(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){return defaults()}}
+function saveSizes(v){try{localStorage.setItem(KEY,JSON.stringify(v))}catch(e){}}
+let sizes=loadSizes();
+function applySizes(){const app=$('app'),w=app.clientWidth,h=app.clientHeight;
+  sizes.left=Math.max(MIN.left,Math.min(sizes.left,w-sizes.right-280));
+  sizes.right=Math.max(MIN.right,Math.min(sizes.right,w-sizes.left-280));
+  sizes.bottom=Math.max(MIN.bottom,Math.min(sizes.bottom,h-200));
+  app.style.setProperty('--left',sizes.left+'px');app.style.setProperty('--right',sizes.right+'px');
+  app.style.setProperty('--bottom',sizes.bottom+'px')}
+function gutter(id,key,axis,sign){const g=$(id);
+  g.addEventListener('pointerdown',ev=>{ev.preventDefault();g.setPointerCapture(ev.pointerId);g.classList.add('drag');document.body.classList.add('dragging');
+    const start=axis==='x'?ev.clientX:ev.clientY,base=sizes[key];
+    const move=e=>{sizes[key]=base+sign*((axis==='x'?e.clientX:e.clientY)-start);applySizes()};
+    const up=()=>{g.classList.remove('drag');document.body.classList.remove('dragging');g.removeEventListener('pointermove',move);g.removeEventListener('pointerup',up);saveSizes(sizes)};
+    g.addEventListener('pointermove',move);g.addEventListener('pointerup',up)});
+  g.addEventListener('dblclick',()=>{sizes[key]=defaults()[key];applySizes();saveSizes(sizes)})}
+gutter('g-left','left','x',1);gutter('g-right','right','x',-1);gutter('g-bottom','bottom','y',-1);
+window.addEventListener('resize',applySizes);applySizes();
 refresh();setInterval(refresh,5000);setInterval(poll,2000);
 </script></body></html>
 """
