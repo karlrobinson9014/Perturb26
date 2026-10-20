@@ -295,8 +295,8 @@ h1{font-size:16px;margin:0 8px 0 0}h2{font-size:13px;text-transform:uppercase;le
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.mute{color:var(--mute)}
 button,select{font:inherit;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-main{display:grid;grid-template-columns:280px minmax(0,1fr) 380px;gap:12px;padding:12px 16px}
-@media (max-width:1100px){main{grid-template-columns:1fr}}
+main{display:grid;grid-template-columns:280px minmax(0,1fr) 760px;gap:12px;padding:12px 16px}
+@media (max-width:1400px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
 .list{max-height:60vh;overflow:auto}.list div{padding:6px 8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
 .list div:hover,.list div.sel{background:var(--code)}
