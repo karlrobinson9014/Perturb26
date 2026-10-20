@@ -518,3 +518,40 @@ Result (negative; code in this commit: `polish_fraction` (0 = off, behaviour unc
 - Next: polish only pays if it is free. (a) Run it *inside* the lane batch (score the leader's swap candidates with
   the spare check slots) rather than as a separate phase. (b) Use it only on margin overshoot > 10.1 (ideas.md).
   (c) Use the probe's finding that random subsets win: add random drop masks to ISTA's own fp32 checks.
+
+## 2026-10-20 iter 213: operator directive (again): exact drop moves in ISTA's idle check slots, fed back into d
+Base: iter 209's accepted code (dev 0.97696 harness). Iter 212 ran the directive as a separate post-search phase
+(polish_fraction 0.85 / 0.9: -0.00036 / -0.00017 on 16 images) and found the local search itself works (~90 % of rounds
+accepted, +1e-4..1e-3 per image) but costs ISTA steps that prune more. Its suggested next step was a *free* version.
+Hypothesis: every `check_every` steps the fp32 check runs a fixed batch of B = 4 slots, and slots of lanes with no
+improving candidate are filled with duplicates (wasted). Filling those slots with exact-scored drop moves of the leading
+lane (drop the k entries with the smallest first-order cost g*q, k, 2k, 4k per slot, k adapted on accept/reject) costs
+no extra forward pass. An accepted move becomes the lane's best and (`prune_feedback`) zeroes those entries of the
+leader's iterate d, so ISTA continues from the sparser point instead of re-deriving it. Unlike iter 212, no ISTA time
+is given up, so any accepted move is a net gain (expected small: +0..3e-4 per image).
+Plan: `prune_slots` / `prune_feedback` / `prune_frac` in AttackConfig (off = unchanged). Probe 3 images (accept rate,
+idle-slot count), then `--limit 16` vs the same 16 images in `results/harness/dev-iter209-8c572ce.json`, full dev of the best.
+Result (neutral; code in this commit: `prune_slots` / `prune_feedback` / `prune_frac` / `prune_final` options, all off,
+behaviour unchanged):
+- Probe (scratch script, Attacker.run at 22 s on dev images 0-2): ~50 idle slots per run (of ~54 checks x 4 slots),
+  2-15 drop moves accepted per image. With feedback (accepted drops zeroed in d) 2/3 images got worse (ISTA re-grows
+  the entries and the lane's lam reacts to the margin dip); without feedback the accepts are mostly superseded by later
+  ISTA candidates (images 0 and 2 ended bit-identical to the baseline). `prune_final` 0.4 s (check-only rounds of 4 moves
+  on the final best, ~0.03 s each): 13-14 rounds, 2-4 accepts, a few e-5 per image. Per-image run-to-run noise from
+  timing (a different lane/class wins) is larger than any of this (image 1: 0.9723 vs 0.9759 between two plain runs).
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter213-<tag>.json`),
+  vs the same 16 images in `results/harness/dev-iter209-8c572ce.json` (0.97630, nonzero median 45.1k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | slots | prune_slots, no feedback | 0.97622 | -0.00008 | 5/16 | 46.1k |
+  | slotsfinal | prune_slots, no feedback, prune_final 0.4 | 0.97627 | -0.00003 | 6/16 | 45.2k |
+  All 16/16 success, 0 variant disagreements, t max <= 21.84 s. Noise reference: iter 210's near-identical l05 run was
+  -0.00002 on the same images.
+- Conclusion: free exact drop moves are neutral, not a gain. Together with iters 202 and 212 this closes the
+  prune/swap direction around an ISTA point: at margin ~10.05 the ISTA candidate is already locally tight for
+  first-order-ranked drops (a logit of margin is worth ~14k values at 36k nonzeros, so a drop only wins if it costs
+  < 7e-5 logit per value), and whatever a local search shaves off is overtaken by the next ISTA candidates. The
+  directive's "1 % -> 0.3 %" needs a ~10x sparser solution in a different basin (class / support), not local moves.
+  No full dev bench (no candidate).
+- Next: stop spending iterations on polish. Sparsity levers that change the basin: classes the lanes never surface
+  (leaders' best class has clean rank median ~90), support freezing late in the budget (Lin 2023), l0 change control.
