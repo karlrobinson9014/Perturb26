@@ -743,3 +743,38 @@ Result (neutral; code in this commit: `clip_time` (0 = off, behaviour unchanged)
 - Next: the sign finding is the useful one. On some images, entries with g*q < 0 are a block whose removal raises
   the margin by 0.3-0.5. An ISTA-side version (zero the most negative g*q entries of the leader at each check,
   idea "Entries working against the margin") would act during the search instead of after it.
+
+## 2026-10-20 iter 219: operator directive (eighth time): sign-opposed drops inside ISTA, verified by the batched exact checks
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212-218 ran exact prune/swap *after* or *beside* ISTA and
+landed at -0.0006..+0.00007 on 16 images; iter 217 bounds post-hoc local search at +1.6e-4/image with unlimited time.
+Concrete reason this run differs: iter 218 found that on some images a *block* of support entries has g*q < 0
+(the gradient opposes the entry's sign); dropping the 64-256 most negative ones raised the margin 10.06 -> 10.57.
+Those entries sit at |d| = 1 (clamped), so plain ISTA needs ~50 steps of lr 0.01 to walk them below the rounding point,
+and the L1 schedule meanwhile spends margin on them. Here every gradient step zeroes, in d, the support entries whose
+g*q < 0 and |g| >= `sign_drop` x mean|g| (lanes holding the target margin only). This acts throughout the search
+instead of polishing at the end; the next q is scored by ISTA's own batched fp32 checks (exact), so a bad drop just
+never becomes a kept candidate. No extra forward.
+Expected: small, +0..3e-4 mean; the risk is that first-order "free" entries are not free together (iter 218 saw drops of
+2000+ cheap entries cost 3-10 logits), so a high threshold (only strongly opposed entries) should be safer.
+Plan: `sign_drop` (0 = off) in AttackConfig; `--limit 16` sweeps at 2 / 4 / 8 vs the same 16 images in
+`results/harness/dev-iter209-8c572ce.json` (0.97630); full dev only if > +0.0003.
+Result (negative; code in this commit: `sign_drop` option, 0 = off, behaviour unchanged):
+- `python -m bench.run_bench --limit 16 --attack-config '{"sign_drop": <t>}' --out results/dev16-iter219-sd<t>.json`,
+  compared per image with the same 16 images in `results/harness/dev-iter209-8c572ce.json` (0.97630):
+  | sign_drop | mean | delta | up |
+  |---|---|---|---|
+  | 4 | 0.97518 | -0.00112 | 4/16 |
+  | 8 | 0.97575 | -0.00055 | 4/16 |
+  | 16 | 0.97611 | -0.00019 | 5/16 |
+  All 16/16 success, 0 variant disagreements, time_max <= 21.84 s. (sd2 was started, then killed before it finished:
+  monotone trend.)
+- Loss is monotone in how much gets dropped. The damage is concentrated: dev image ...063626Z-0002 (the iter 218 image
+  whose opposed block was "free" at the end) goes 22.8k -> 79k / 50k / 31k nonzeros, and ...-0012 (13th) 28.7k -> 58k / 42k / 41k.
+  Zeroing opposed entries mid-search knocks the lane off its trajectory. An entry that opposes the margin at step k
+  is often one ISTA is passing through (momentum, class switch); forcing it to 0 resets the progress, and the L1 schedule
+  then rebuilds a bigger support. One image gains (60.2k -> 47.8-49.0k in all three runs, +), not enough.
+- Conclusion: the eighth prune variant (first-order drops inside ISTA, verified only by the regular checks) is
+  worse than the ones that left ISTA alone. Sign-opposed entries are only "free" at the converged point (iter 218), not
+  along the path. With iters 202/212-218, prune/swap is closed in every placement: before, beside, inside and after
+  the search, at any time budget (iter 217). No full dev (no candidate).
+- Next: the basin, not the polish (target classes the lanes never surface; competitor class choice, `notes/competition.md`).
