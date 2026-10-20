@@ -1,0 +1,67 @@
+{
+ "mode": "live_rounds",
+ "summary": {
+  "rounds": 3,
+  "scored": 3,
+  "success": 3,
+  "mean_official": 0.9741840916218364,
+  "min_official": 0.9730578595543258,
+  "max_done_since_boundary": 28.681063413619995
+ },
+ "rounds": [
+  {
+   "task_id": "1792523280-hf-ee4a7fa58f4378c1-1276336",
+   "official": 0.9730578595543258,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9730608340656559,
+   "margin": 10.113094329833984,
+   "nonzero": 69548,
+   "steps": 512,
+   "attack_seconds": 25.365842819213867,
+   "round": 0,
+   "boundary": 1792523280.0,
+   "seen_since_boundary": 2.6236791610717773,
+   "attack_start_since_boundary": 3.305945873260498,
+   "done_since_boundary": 28.671788692474365
+  },
+  {
+   "task_id": "1792523400-hf-ee4a7fa58f4378c1-1079768",
+   "official": 0.9756848764996946,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.975687850479029,
+   "margin": 10.131365776062012,
+   "nonzero": 52213,
+   "steps": 517,
+   "attack_seconds": 25.606660842895508,
+   "round": 1,
+   "boundary": 1792523400.0,
+   "seen_since_boundary": 2.496767997741699,
+   "attack_start_since_boundary": 3.0634734630584717,
+   "done_since_boundary": 28.67013430595398
+  },
+  {
+   "task_id": "1792523520-hf-ee4a7fa58f4378c1-1072883",
+   "official": 0.9738095388114888,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9738125133816691,
+   "margin": 10.005268096923828,
+   "nonzero": 57268,
+   "steps": 512,
+   "attack_seconds": 25.71156096458435,
+   "round": 2,
+   "boundary": 1792523520.0,
+   "seen_since_boundary": 2.4047818183898926,
+   "attack_start_since_boundary": 2.9695024490356445,
+   "done_since_boundary": 28.681063413619995
+  }
+ ]
+}

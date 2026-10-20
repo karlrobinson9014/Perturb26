@@ -1,0 +1,193 @@
+{
+ "mode": "live_rounds",
+ "summary": {
+  "rounds": 10,
+  "scored": 10,
+  "success": 10,
+  "mean_official": 0.9765603246081248,
+  "min_official": 0.9685339638614133,
+  "max_done_since_boundary": 28.723511219024658
+ },
+ "rounds": [
+  {
+   "task_id": "1792520880-hf-ee4a7fa58f4378c1-0671346",
+   "official": 0.9740704914760878,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9740734657448249,
+   "margin": 10.010302543640137,
+   "nonzero": 53178,
+   "steps": 503,
+   "attack_seconds": 24.91407871246338,
+   "round": 0,
+   "boundary": 1792520880.0,
+   "seen_since_boundary": 2.6715848445892334,
+   "attack_start_since_boundary": 3.7961764335632324,
+   "done_since_boundary": 28.71025514602661
+  },
+  {
+   "task_id": "1792521000-hf-ee4a7fa58f4378c1-0159473",
+   "official": 0.9817875945868748,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9817905638073976,
+   "margin": 10.081523895263672,
+   "nonzero": 17934,
+   "steps": 518,
+   "attack_seconds": 25.66021704673767,
+   "round": 1,
+   "boundary": 1792521000.0,
+   "seen_since_boundary": 2.367858409881592,
+   "attack_start_since_boundary": 3.018807888031006,
+   "done_since_boundary": 28.679024934768677
+  },
+  {
+   "task_id": "1792521120-hf-ee4a7fa58f4378c1-0820077",
+   "official": 0.9696246693817813,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9696276412771213,
+   "margin": 10.025110244750977,
+   "nonzero": 95830,
+   "steps": 493,
+   "attack_seconds": 24.481343269348145,
+   "round": 2,
+   "boundary": 1792521120.0,
+   "seen_since_boundary": 3.4787404537200928,
+   "attack_start_since_boundary": 4.207684755325317,
+   "done_since_boundary": 28.689028024673462
+  },
+  {
+   "task_id": "1792521240-hf-ee4a7fa58f4378c1-0797255",
+   "official": 0.9784567534936317,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9784597292723138,
+   "margin": 10.015682220458984,
+   "nonzero": 37953,
+   "steps": 515,
+   "attack_seconds": 25.435076475143433,
+   "round": 3,
+   "boundary": 1792521240.0,
+   "seen_since_boundary": 2.6815977096557617,
+   "attack_start_since_boundary": 3.2743988037109375,
+   "done_since_boundary": 28.70947527885437
+  },
+  {
+   "task_id": "1792521360-hf-ee4a7fa58f4378c1-0633580",
+   "official": 0.9767748155146997,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9767777780712289,
+   "margin": 10.062283515930176,
+   "nonzero": 40684,
+   "steps": 502,
+   "attack_seconds": 25.008322715759277,
+   "round": 4,
+   "boundary": 1792521360.0,
+   "seen_since_boundary": 3.1798861026763916,
+   "attack_start_since_boundary": 3.6706464290618896,
+   "done_since_boundary": 28.678969144821167
+  },
+  {
+   "task_id": "1792521480-hf-ee4a7fa58f4378c1-0929542",
+   "official": 0.9685339638614133,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9685369341772826,
+   "margin": 9.993037223815918,
+   "nonzero": 93585,
+   "steps": 519,
+   "attack_seconds": 25.692015409469604,
+   "round": 5,
+   "boundary": 1792521480.0,
+   "seen_since_boundary": 2.4500739574432373,
+   "attack_start_since_boundary": 2.9827945232391357,
+   "done_since_boundary": 28.67480993270874
+  },
+  {
+   "task_id": "1792521600-hf-ee4a7fa58f4378c1-0323645",
+   "official": 0.9827524563224337,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9827554305164912,
+   "margin": 10.006354331970215,
+   "nonzero": 16094,
+   "steps": 535,
+   "attack_seconds": 25.695658683776855,
+   "round": 6,
+   "boundary": 1792521600.0,
+   "seen_since_boundary": 2.479088544845581,
+   "attack_start_since_boundary": 3.0020720958709717,
+   "done_since_boundary": 28.697730779647827
+  },
+  {
+   "task_id": "1792521720-hf-ee4a7fa58f4378c1-0132423",
+   "official": 0.9776006478012512,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9776036233277454,
+   "margin": 10.14648151397705,
+   "nonzero": 36602,
+   "steps": 496,
+   "attack_seconds": 24.637600898742676,
+   "round": 7,
+   "boundary": 1792521720.0,
+   "seen_since_boundary": 3.380903959274292,
+   "attack_start_since_boundary": 4.072226047515869,
+   "done_since_boundary": 28.709826946258545
+  },
+  {
+   "task_id": "1792521840-hf-ee4a7fa58f4378c1-1234247",
+   "official": 0.978894804666524,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.978897778614997,
+   "margin": 10.001151084899902,
+   "nonzero": 30554,
+   "steps": 521,
+   "attack_seconds": 25.730363368988037,
+   "round": 8,
+   "boundary": 1792521840.0,
+   "seen_since_boundary": 2.4189724922180176,
+   "attack_start_since_boundary": 2.993147850036621,
+   "done_since_boundary": 28.723511219024658
+  },
+  {
+   "task_id": "1792521960-hf-ee4a7fa58f4378c1-0231346",
+   "official": 0.9771070489765511,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9771100245634032,
+   "margin": 10.006295204162598,
+   "nonzero": 43892,
+   "steps": 297,
+   "attack_seconds": 15.661444425582886,
+   "round": 9,
+   "boundary": 1792521960.0,
+   "seen_since_boundary": 2.0545709133148193,
+   "attack_start_since_boundary": 13.03655219078064,
+   "done_since_boundary": 28.697996616363525
+  }
+ ]
+}
