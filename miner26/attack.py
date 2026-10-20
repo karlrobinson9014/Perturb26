@@ -59,12 +59,16 @@ class AttackConfig:
     rw_step: float = 0.0  # >0: threshold * (rw_lo + (rw_hi-rw_lo)*sigmoid((|d|-0.5)/rw_step)) instead of the power profile
     rw_lo: float = 0.14
     rw_hi: float = 2.64
+    momentum: float = 0.5  # >0: step along an EMA of the normalised gradient (heavy ball) instead of the raw gradient
+    lr_final: float = 1.0  # <1: each lane's lr decays linearly to lr*lr_final over its remaining budget (MDCS, Tao 2026)
+    extrap: float = 0.0  # >0: FISTA-style extrapolation d + extrap*(d - d_prev) before the gradient step
     safety_margin: float = 1.0  # fp32 margin a candidate needs before it is kept
     check_every: int = 8  # steps between batched fp32 checks of the lanes' best unverified candidates
     switch_fraction: float = 0.35  # share of the budget before weak lanes re-target
     n_switch: int = 2
     extra_switches: str = "0.6"  # further re-target rounds, comma-separated budget fractions (e.g. "0.6")
     n_switch_extra: int = 1  # lanes freed in each extra round
+    retarget_warm: bool = True  # re-targeted lanes start from the leading lane's iterate instead of d = 0
     switch_topk: int = 3  # >0: rank target classes by every lane's top-k fp32 logits, not only its argmax
     novelty_pixels: int = DEFAULT_PARAMS.novelty_target_pixels
     search_amp: bool = True  # fp16 autocast for gradient steps on CUDA
@@ -376,7 +380,10 @@ class Attacker:
             return nz, px
 
         d = torch.zeros((B, *lo.shape), device=self.device)
+        mom = torch.zeros_like(d) if cfg.momentum > 0 else None
+        d_prev = torch.zeros_like(d) if cfg.extrap > 0 else None
         lam = torch.zeros(B, device=self.device)
+        lane_t0 = [t0] * B  # when each lane (re)started, for the lr decay
         started = torch.zeros(B, dtype=torch.bool, device=self.device)
         best: list[_Best | None] = [None] * B
         fallback: _Best | None = None  # highest-margin flip below safety_margin
@@ -431,6 +438,12 @@ class Attacker:
                     info["early_exit"] = True
                     break
                 sw = self._retarget(lanes, best, d, lam, started, quantize, true_index, n_free, tried, last_switched)
+                for b in sw["lanes"]:  # restarted lanes lose their history
+                    lane_t0[b] = now
+                    if mom is not None:
+                        mom[b] = 0.0
+                    if d_prev is not None:
+                        d_prev[b] = 0.0
                 last_switched = sw["lanes"]
                 info["switch"].append(sw)
             q = quantize(d)
@@ -460,12 +473,22 @@ class Attacker:
             started = started | above
             gn = g / (g.abs().flatten(1).mean(1).view(B, *([1] * (g.dim() - 1))) + 1e-12)
             push = (margin < cfg.kappa).float().view(B, *([1] * (g.dim() - 1)))
-            threshold = (cfg.lr * lam).view(B, *([1] * (g.dim() - 1)))
+            if cfg.lr_final < 1.0:
+                lr_b = torch.tensor([cfg.lr * (1.0 - (1.0 - cfg.lr_final) * min(1.0, (now - s) / max(1e-6, deadline - s)))
+                                     for s in lane_t0], device=self.device).view(B, *([1] * (g.dim() - 1)))
+            else:
+                lr_b = cfg.lr
+            threshold = lr_b * lam.view(B, *([1] * (g.dim() - 1)))
             if cfg.rw_step > 0:  # smoothed step at the rounding point: values above 0.5 are the ones the score counts
                 threshold = threshold * (cfg.rw_lo + (cfg.rw_hi - cfg.rw_lo) * torch.sigmoid((d.abs() - 0.5) / cfg.rw_step))
             elif cfg.rw_power != 0:  # weights from the pre-step iterate (<0: weak entries shrink faster, >0: saturated ones)
                 threshold = threshold * ((d.abs() + cfg.rw_eps) / (0.5 + cfg.rw_eps)) ** cfg.rw_power
-            d = d + cfg.lr * gn * push
+            if mom is not None:
+                mom.mul_(cfg.momentum).add_(gn, alpha=1.0 - cfg.momentum)
+                gn = mom / (mom.abs().flatten(1).mean(1).view(B, *([1] * (g.dim() - 1))) + 1e-12)
+            if d_prev is not None:  # extrapolate from the last two iterates, then remember this one
+                d, d_prev = d + cfg.extrap * (d - d_prev), d
+            d = d + lr_b * gn * push
             d = torch.sign(d) * torch.clamp(d.abs() - threshold, min=0.0)
             if var_mask is not None:
                 d = d * var_mask
@@ -562,7 +585,7 @@ class Attacker:
             tried.add(c)
             lanes.j[b] = c
             lanes.mode[b] = 0
-            d[b] = 0.0
+            d[b] = d[leader] if self.cfg.retarget_warm and leader >= 0 else 0.0
             lam[b] = 0.0
             started[b] = False
             best[b] = None

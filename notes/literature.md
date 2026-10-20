@@ -61,3 +61,17 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
   and On the Convergence of an Adaptive Momentum Method for Adversarial Attacks (Sheng et al., AAAI 2024),
   doi 10.1609/aaai.v38i13.29323 : gradient-EMA momentum in iterative attacks gives smaller perturbations at the same
   success rate. Tried iter 208 as `momentum` (EMA of the normalised gradient, see research_log).
+- The Power of Decaying Steps: Enhancing Attack Stability and Transferability for Sign-based Optimizers (Tao et al., 2026),
+  https://consensus.app/papers/details/d7e6dd39da665f7fa420039cf5874e4c/ : non-decaying step sizes make iterative attacks
+  non-convergent / unstable; monotonically decreasing coordinate-wise steps (MDCS-MI, with momentum) converge at O(1/sqrt T).
+  Here: per-lane linear lr decay `lr_final` on top of momentum, tried iter 209 (see research_log).
+- Boosting Black-box Adversarial Attack with a Better Convergence (Yin et al., 2020),
+  https://consensus.app/papers/details/915aaa7a246d563aa4216b58df3a004b/ : step-size decay in (M)I-FGSM gives better
+  convergence. Same idea as above; iter 209.
+- Non-Lipschitz Attack: a more sparse adversarial attack via non-Lipschitz lp regularization (Lin, Wu, Xiang, 2023),
+  doi 10.4208/csiam-am.so-2022-0005 : lp (0<p<1) model with a support lower bound -> iterative support *shrinking*
+  (entries that leave the support never re-enter) plus thresholding; ~14 % fewer pixels than FMN-l0. Not tried;
+  candidate for a late-budget "freeze support" phase.
+- Efficient Untargeted White-Box Adversarial Attacks Based on Simple Initialization (Zhou et al., 2024),
+  https://consensus.app/papers/details/857dd1fa722956ccb112e7a968c935d3/ : a guided init instead of random restarts.
+  Relevant to warm-starting re-targeted lanes (they restart from d=0 at 35 % of the budget). Not tried.

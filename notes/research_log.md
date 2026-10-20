@@ -379,3 +379,38 @@ Result (code in this commit: `momentum` = 0.5 default, `extrap` option off; mome
   memory (0.8) is worse than 0.5, consistent with STE gradients that go stale once entries cross 0.5.
 - Next: momentum 0.3 and momentum + larger lr (smoother direction may tolerate lr 0.015-0.02, which was flat without
   momentum in iter 207); Nesterov look-ahead; the class lever (prior from the public train split) remains the big gap.
+
+## 2026-10-20 iter 209: momentum (iter 208) + decaying per-lane step size
+Base: iter 207's accepted code (dev 0.97633) plus iter 208's momentum 0.5 re-applied (`logs/rejected-iter-208.patch`,
+full dev 0.97649, +0.00017, 47/64 images up: consistent but below MIN_GAIN 0.0005).
+Hypothesis: the lane step lr is constant (0.01 levels per unit normalised gradient) for the whole budget. Late in a
+lane's life the support is nearly settled and a constant step keeps entries hopping across the 0.5 rounding point
+(nonzero median 37-39k vs leaders ~28k). Tao et al. 2026 ("The Power of Decaying Steps", MDCS) show that
+non-decaying step sizes cause non-convergence/instability in iterative attacks and that monotonically decreasing steps
+(with momentum, MDCS-MI) converge and are more stable. A linear per-lane decay from lr to lr*lr_final over the lane's
+remaining budget (re-targeted lanes restart their schedule) should let late steps refine the support instead of churning
+it, and a higher start lr (flat alone in iter 207: lr 0.015 +0.00008) may now pay because the late steps shrink.
+The ISTA threshold is lr*lam, so it decays too; lam's multiplicative schedule compensates.
+Plan: `lr_final` in AttackConfig (1.0 = off). `--limit 16` with lr_final 0.3 / 0.5 and lr 0.015 + lr_final 0.3, all with
+momentum 0.5, vs momentum alone (iter 208's 16-img run `results/dev16-iter208-m5.json`, 0.97604); full dev of the best.
+Result (code in this commit: momentum 0.5 (iter 208) + `retarget_warm` = True as defaults; `lr_final` option, off):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter209-<tag>.json`),
+  vs momentum alone on the same 16 images (`results/dev16-iter208-m5.json`, 0.97604, nonzero median 45.0k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | f3 | lr_final 0.3 | 0.97562 | -0.00042 | 4/16 | 48.0k |
+  | f5 | lr_final 0.5 | 0.97582 | -0.00022 | 4/16 | 47.5k |
+  | l15f3 | lr 0.015, lr_final 0.3 | 0.97594 | -0.00010 | 4/16 | 48.8k |
+  | warm | retarget_warm (re-targeted lanes start from the leader's d) | 0.97625 | +0.00021 | 8/16 | 45.1k |
+  All 16/16 success, 0 variant disagreements, ~435 steps, t max <= 21.84 s.
+- The decay hypothesis was wrong: the more lr decays, the worse (more nonzeros). Late steps still need full size; lam
+  keeps moving the boundary until the end, and a smaller step just stalls the prune. A higher start lr only partly
+  compensates. Instead, the side test (warm start, cf. the guided-init idea of Zhou et al. 2024) gained: a re-targeted
+  lane at 35 % / 60 % of the budget no longer re-discovers a support from d = 0; it starts from the leader's sparse
+  iterate, which already sits near several class boundaries, and only has to move it into the target class.
+- Full dev with momentum + warm start (`python -m bench.run_bench --out results/dev-iter209-agent.json`): **0.97683**
+  vs best 0.97633 (+0.00050) and momentum alone 0.97649 (+0.00033); 64/64, 0 disagreements, p95 21.83 s / max 21.85 s,
+  438 steps; per image 45/64 up vs the accepted run (35/64 vs iter 208), nonzero median 36.0k vs 39.2k (accepted) / 37.3k.
+  `bash harness/gate.sh` passes.
+- Next: warm-start variants (copy the leader's momentum; start from only its |d| > 0.5 entries; start from the lane that
+  surfaced the class); late-budget support shrinking (Lin et al. 2023); class prior from the public train split.
