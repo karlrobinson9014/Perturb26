@@ -27,6 +27,12 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] Multi-restart in one batch (different seeds or targets), keep the best.
 - [ ] `search_fraction`: time split between search and prune.
 
+- [x] Reweighted L1 (Candes 2008, threshold ~ 1/(|d|+eps)): iter 205, 16-img -0.0014..-0.0023, more nonzeros. Discarded.
+- [x] Inverse reweighting (threshold * ((|d|+0.3)/0.8)^p, saturated entries shrink harder): iter 205, p=2 best,
+      dev 0.97628 (+0.00144 vs best, +0.00067 vs iter 204), nonzero median 39.3k vs 44.2k.
+- [ ] Shrink profile as a smoothed step at the 0.5 rounding point (sigmoid((|d|-0.5)/w)), with retuned lam_up/lam_down/lr.
+- [ ] Re-tune lr / lam_up / lam_down under rw_power=2 (the adaptive lam was tuned for plain L1).
+
 ## Prune
 - [x] Greedy first-order prune of the best candidate in the last 20 % of the budget (4 drop sizes per batched fp32 check): iter 202, 16-img 0.97300 vs 0.97365, discarded. Candidates are already tight at margin 10; only the overshoot above 10 is recoverable (~1e-5..4e-4/image).
 - [ ] Clip margin overshoot only: if the final best has margin > 10.1, a few cheap prune rounds (no search time lost) recover up to ~4e-4 on such images.

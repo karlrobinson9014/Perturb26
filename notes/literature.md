@@ -26,3 +26,6 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
   the classic way to run an attack per target class. Idea: race several targets and keep the cheapest (iter 1).
 - Multi-attacks (Fort, 2023), https://arxiv.org/abs/2308.03792 : one image's neighbourhood holds ~10^O(100) class regions,
   i.e. nearly any class is reachable; supports "the class is a free choice, the cost differs".
+- Enhancing Sparsity by Reweighted L1 Minimization (Candes, Wakin, Boyd, 2008), https://doi.org/10.1007/s00041-008-9045-x :
+  per-element L1 weights 1/(|x|+eps) from the previous iterate approximate L0. Tried iter 205 as `rw_eps` in the ISTA
+  threshold: worse (16-img -0.0014..-0.0023, more nonzeros); the inverse weighting (saturated entries shrink harder) won.

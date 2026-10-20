@@ -242,3 +242,41 @@ Result (code kept in this commit: `check_every=8`, `switch_topk=3`, `extra_switc
   classes the lanes never surface (prior over adversarial classes, from a non-dev source) or lower RMSE inside a class.
 - Next: (a) class prior learned from the public train split (ideas.md); (b) per-class RMSE: compare our support with
   the leaders' on images where we already hit their class (iter 2 data) to see if it is the search, not the class.
+
+## 2026-10-20 iter 205: reweighted L1 (L0 surrogate) in the ISTA lanes
+Hypothesis: the gap to the leaders is RMSE at the same margin (their median 3.1 % nonzero vs our ~4.8 %, iter 2 build;
+warm-starting ISTA from a competitor's perturbation keeps or improves it, so sparser optima exist that ISTA from zero
+misses). The score counts values (L0 on the rounded d), but the soft threshold shrinks every element by the same
+lr*lam: saturated elements (|d| = 1, already "paid for") must out-pull lam to stay, while weak elements below the 0.5
+rounding point (free) linger. Iteratively reweighted L1 (Candes, Wakin, Boyd 2008) with per-element threshold
+lr*lam*(0.5+eps)/(|d|+eps) approximates L0: weak entries die fast, strong ones are barely shrunk, and the adaptive lam
+re-scales the overall level. Expect fewer nonzeros at margin 10 on the same class (iter 204 per-image nonzero median ~44k).
+Base: iter 204's code re-applied (check_every=8, switch_topk=3, extra round at 0.6; discarded only as below MIN_GAIN,
+dev 0.97561). Plan: `rw_eps` in AttackConfig (0 = off); `--limit 16` with rw_eps 0 / 0.1 / 0.3, then full dev with the best.
+Result (code kept in this commit: iter 204 base + `rw_power=2.0`, `rw_eps=0.3`; the per-element ISTA threshold is
+lr*lam*((|d|+0.3)/0.8)^p, weights from the pre-step iterate):
+- 16 images, `python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter205-<tag>.json`,
+  compared to the same images in `results/dev-iter204-agent.json` (0.97476 on those 16, nonzero median 52.4k):
+  | config | mean | delta | images up | nonzero median |
+  |---|---|---|---|---|
+  | rw_power -1, eps 0.1 (reweighted L1, the hypothesis) | 0.97245 | -0.00231 | 1/16 | 58.4k |
+  | rw_power -1, eps 0.3 | 0.97341 | -0.00135 | 3/16 | 56.5k |
+  | rw_power +1, eps 0.3 | 0.97536 | +0.00060 | 14/16 | 50.2k |
+  | rw_power +1, eps 0.05 | 0.97530 | +0.00054 | 13/16 | 50.8k |
+  | **rw_power +2, eps 0.3** | **0.97563** | **+0.00087** | 15/16 | 49.2k |
+  | rw_power +4, eps 0.3 | 0.97543 | +0.00067 | 12/16 | 49.6k |
+- The hypothesis was wrong in sign. Reweighted L1 keeps saturated entries almost unshrunk, so the support that is
+  already paid for never gets pruned and nonzeros grow. The **inverse** helps: shrink saturated entries (|d| near 1)
+  ~2.6x harder and entries below the 0.5 rounding point ~7x softer. A saturated entry then survives only while its
+  gradient keeps paying for it, and sub-threshold entries (free in L0) can explore and grow where the gradient is
+  consistent. This puts the penalty where the score's L0 actually is.
+- Full dev (`python -m bench.run_bench --out results/dev-iter205-agent.json`): **mean 0.97628** vs best 0.97484
+  (+0.00144) and iter 204 0.97561 (+0.00067); 64/64 success, 0 variant disagreements, time p95 21.89 s / max 21.99 s,
+  steps mean 430. Up on 58/64 images vs iter 204 (61/64 vs seed); nonzero median 39.3k vs 44.2k (iter 204).
+  Tests 29/29 pass and `bash harness/gate.sh` passes (an earlier contract-test failure happened only while the bench
+  held the CPU: TinyNet then got 1-2 steps in 6 s with any rw_power).
+- Conclusion: a real sparsity gain inside the same search (-11 % nonzeros) on top of iter 203/204's changes, but
+  +0.0014 is still under MIN_GAIN (0.002 -> needs 0.97684). Nonzero median is still ~39k vs the leaders' ~28k.
+- Next: the shrink profile is now a lever. Try a profile aimed straight at the rounding point (e.g. threshold that
+  is small below 0.5 and large above it, a smoothed step) and retune lam_up/lam_down/lr with it, since the adaptive
+  lam was tuned for plain L1.
