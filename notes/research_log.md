@@ -349,3 +349,33 @@ Result (code in this commit: iter 206's stack re-applied unchanged as the defaul
 - Next: more progress per step is the only in-class lever that has paid (iter 203). Try momentum / extrapolation on d
   (accelerated proximal IHT, Zhang 2018 / Wu 2019), or l0 change control (Zhu 2021). For the class lever, try a class prior
   from the public train split.
+
+## 2026-10-20 iter 208: momentum / extrapolation on the ISTA iterate
+Base: iter 207's accepted code (dev 0.97633 harness, 0.9762-0.9763 in three agent runs).
+Hypothesis: more progress per step is the only in-class lever that has paid (iter 203: 302 -> 437 steps, +0.0005).
+Momentum does the same without more steps. The gradient is taken at q = round(d) (straight-through), so between two
+steps only the few entries that cross 0.5 change q and the gradient direction is noisy step to step; a gradient EMA
+(heavy ball, as in MI-FGSM, Dong 2018; NMI-FGSM, Xu 2020; EAD's FISTA, Chen 2017) averages that noise and moves entries
+with a consistent gradient across 0.5 sooner, while entries whose gradient flips sign get shrunk away. FISTA-style
+extrapolation on d (Zhang 2018, Wu 2019; APG-restart, Zhou 2020; adaptive restart, O'Donoghue & Candes 2015) is the
+other form; restart is needed when lam changes direction. Iter 207 per-image: nonzero median 38.6k vs leaders ~28k,
+~435 steps/image, so a faster in-class descent should lower nonzeros at margin 10.
+Plan: `momentum` (gradient EMA beta, 0 = off) and `extrap` (FISTA beta on d, 0 = off) in AttackConfig, reset on
+re-target. `--limit 16` with momentum 0.5 / 0.8 and extrap 0.3 vs iter 207's same 16 images, full dev of the best.
+Result (code in this commit: `momentum` = 0.5 default, `extrap` option off; momentum state reset for re-targeted lanes):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter208-<tag>.json`),
+  vs the same 16 images in the accepted run `results/harness/dev-iter207-4fc2437.json` (0.97555, nonzero median 50.6k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | m5 | momentum 0.5 | 0.97604 | +0.00049 | 12/16 | 45.0k |
+  | m8 | momentum 0.8 | 0.97575 | +0.00020 | 9/16 | 48.4k |
+  | x3 | extrap 0.3 | 0.97582 | +0.00028 | 13/16 | 49.3k |
+  All 16/16 success, 0 variant disagreements, ~435 steps, t max <= 21.84 s.
+- Full dev with momentum 0.5 (`python -m bench.run_bench --out results/dev-iter208-agent.json`): **0.97649** vs best
+  0.97633 (+0.00017, below MIN_GAIN 0.0005), 64/64, 0 disagreements, p95 21.85 s / max 21.88 s; per image **47 up / 17
+  down** vs the accepted run, nonzero median 37.3k vs 39.2k. `bash harness/gate.sh` passes.
+- Conclusion: momentum helps consistently (47/64 images, -5 % nonzeros) but by little; the 16-image gain (+0.0005)
+  halved on the full set. Both forms of acceleration help, the gradient EMA more than extrapolation on d; a long
+  memory (0.8) is worse than 0.5, consistent with STE gradients that go stale once entries cross 0.5.
+- Next: momentum 0.3 and momentum + larger lr (smoother direction may tolerate lr 0.015-0.02, which was flat without
+  momentum in iter 207); Nesterov look-ahead; the class lever (prior from the public train split) remains the big gap.

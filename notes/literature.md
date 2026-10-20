@@ -48,3 +48,16 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
   https://consensus.app/papers/details/1d2773a56d0359d5b9a67ba771dd54e4/ : adapts the norm budget eps up/down around the
   boundary, like our lam_up/lam_down; HO-FMN (Mura et al., 2024) finds step-size schedulers matter. Motivates the
   iter 207 lr/lam retune.
+- EAD: Elastic-Net Attacks to Deep Neural Networks via Adversarial Examples (Chen et al., 2017),
+  https://consensus.app/papers/details/eb8f374526375015943c139395bac649/ : L1 (elastic-net) attack solved with
+  ISTA/FISTA, i.e. our lane update plus Nesterov extrapolation. Tried iter 208 as `extrap` (see research_log).
+- Adaptive Restart for Accelerated Gradient Schemes (O'Donoghue, Candes, 2015), https://arxiv.org/abs/1204.3982 and
+  Proximal Gradient Algorithm with Momentum and Flexible Parameter Restart for Nonconvex Optimization (Zhou et al., 2020),
+  https://arxiv.org/abs/2002.11582 : momentum in proximal gradient needs a restart when the iterates oscillate; for us,
+  restart on re-target (done in iter 208); an oscillation-triggered restart not tried.
+- Adaptive FISTA for Non-convex Optimization (Ochs, Pock, 2017), https://arxiv.org/abs/1711.04343 : line-searched
+  extrapolation parameter; too costly per step here (each objective eval is a forward pass). Not tried.
+- Generate Adversarial Examples by Nesterov-momentum Iterative FGSM (Xu, 2020), doi 10.1109/ICSESS49938.2020.9237700,
+  and On the Convergence of an Adaptive Momentum Method for Adversarial Attacks (Sheng et al., AAAI 2024),
+  doi 10.1609/aaai.v38i13.29323 : gradient-EMA momentum in iterative attacks gives smaller perturbations at the same
+  success rate. Tried iter 208 as `momentum` (EMA of the normalised gradient, see research_log).
