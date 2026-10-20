@@ -216,3 +216,4 @@ ts	iter	mode	commit	dev_score	holdout_score	decision	reason
 2026-10-20T14:32:19Z	214	research	536b248	0.9768902090100802		discard	no_gain (best 0.9769591579446777)
 2026-10-20T15:17:31Z	215	research	53cc991	0.9767965193070117		discard	no_gain (best 0.9769591579446777)
 2026-10-20T16:06:47Z	216	research	197b27a	0.9768803783802168		discard	no_gain (best 0.9769591579446777)
+2026-10-20T16:16:57Z	217	research	0cd0951			keep	no miner26 change; gates pass
