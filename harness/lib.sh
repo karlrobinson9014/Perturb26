@@ -216,8 +216,17 @@ reviewed_base() { git -C "$ROOT" merge-base "$MAIN_BRANCH" "$WORK_BRANCH"; }
 
 promote_to_main() {  # promote_to_main "message" tag
   cd "$ROOT" || return 1
-  git checkout -q "$MAIN_BRANCH"
-  if has_remote_branch "$MAIN_BRANCH"; then git pull -q --ff-only "$REMOTE" "$MAIN_BRANCH" || true; fi
+  # A failed checkout (e.g. main checked out in another git worktree) used to fall through to a
+  # no-op merge on the work branch, so accepted versions silently never reached main.
+  if ! git checkout -q "$MAIN_BRANCH" || [[ "$(git branch --show-current)" != "$MAIN_BRANCH" ]]; then
+    git tag -a "$2" -m "$1 (NOT promoted: cannot check out $MAIN_BRANCH)" "$WORK_BRANCH" 2>/dev/null || true
+    push_branch "$WORK_BRANCH"
+    log "ERROR promote: cannot check out $MAIN_BRANCH (checked out in another worktree?); tagged $2 on $WORK_BRANCH, merge it into $MAIN_BRANCH by hand"
+    return 1
+  fi
+  if has_remote_branch "$MAIN_BRANCH"; then
+    git pull -q --ff-only "$REMOTE" "$MAIN_BRANCH" || log "WARN promote: $REMOTE/$MAIN_BRANCH has diverged from local $MAIN_BRANCH; the push below may fail"
+  fi
   if ! git merge -q --no-ff "$WORK_BRANCH" -m "$1"; then
     git merge --abort 2>/dev/null
     git checkout -q "$WORK_BRANCH"
