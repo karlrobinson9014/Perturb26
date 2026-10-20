@@ -602,3 +602,32 @@ Result (neutral; code in this commit: iter 212's `polish_fraction` / `polish_bat
   (no candidate).
 - Next: (a) sign-aware rounding inside ISTA (drop entries whose gradient opposes their sign), see ideas.md;
   (b) target classes never surfaced by the lanes; (c) late-budget support freezing.
+
+## 2026-10-20 iter 215: operator directive (fourth time): exact batched drop/add moves along ISTA's own rounding order
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212/213/214 ranked drop/swap moves by the first-order
+cost g*q (or random subsets of that pool) and found ~5e-5/image at most. Concrete reason this run differs: the
+candidate family is the rounding threshold of the continuous iterate d. ISTA's d carries a per-entry confidence the
+first-order ranking does not: entries with |d| just above 0.5 are the ones the L1 schedule is already pushing out,
+entries just below 0.5 are the ones the objective is pulling in. "Drop k" = round at t > 0.5 (drop the k smallest |d|
+of the support), "add k" = round at t < 0.5, "drop k and add k" = the best candidate q with its k smallest-|d| entries
+removed and the k largest sub-threshold entries added. Every candidate is scored exactly (fp32 lane check, the same
+batch as ISTA's checks), all lanes' current d, not only the leader's, in the last `sweep_final` seconds.
+Expected: small (the final ISTA point moves ~1 % per check), but the threshold sweep spans the ISTA trajectory
+direction, so it should beat g*q drops if anything does. 16-img per-image numbers in `results/harness/dev-iter209-8c572ce.json`.
+Plan: `sweep_final` (s, 0 = off) in AttackConfig; probe 3 images for accept counts and est gains, then `--limit 16`
+vs the same 16 images (0.97630); full dev only if > +0.0003.
+Result (neutral; code in this commit: `sweep_final` (0 = off, behaviour unchanged) / `sweep_ts` options, `Attacker._sweep`):
+- Probe (scratch script, Attacker.run at 22 s, dev images 0-4, `sweep_final` 0.6): 44 candidates per image (5 thresholds
+  0.4-0.7 + drop 16/64/256 smallest-|d| and drop-k/add-k/2 swaps, x 4 lanes), 5-14 accepted, gain over the post-search
+  best +1.0e-5 / +4.9e-5 / +5.4e-5 / +1.0e-5 / +1.0e-5 (nonzeros 22k-60k). Same order as the g*q-ranked moves of iter 214
+  (~5e-5/image bound). Ranking by ISTA's |d| instead of g*q does not open more slack.
+- `python -m bench.run_bench --limit 16 --attack-config '{"sweep_final":0.45}' --out results/dev16-iter215-sweep045.json`:
+  **0.97628** vs 0.97630 on the same 16 images in `results/harness/dev-iter209-8c572ce.json` (-0.00002), 9/16 up, 16/16
+  success, 0 variant disagreements, time_max 21.74 s, nonzero median 45.4k (45.1k). Per-image deltas are within +-6e-5
+  except three images where a different class/lane won (-0.00036, -0.00056, +0.00031: timing noise, not the sweep).
+  (A first run of this config overlapped a pytest run on the GPU, 23.4 s on image 1, and was discarded and re-run.)
+- Conclusion: the fourth exact prune/swap variant (rounding-threshold moves) is also neutral. Every candidate family
+  around the final ISTA point (first-order drops, random subsets, swaps, threshold sweeps; separate phase, idle slots,
+  fp16 screen, end-only) lands at 1e-5..5e-5 per image, below the noise of which class wins. No full dev bench (no candidate).
+- Recommendation to the operator: retire the prune/swap directive. The "1 % -> 0.3 %" gap is a different basin (class
+  or support); the run-to-run class noise (+-5e-4 on single images) is ~10x larger than any local move.
