@@ -1,0 +1,191 @@
+{
+ "summary": {
+  "changes_observed": 11,
+  "poll_errors": 0,
+  "offset_s": {
+   "min": 1.307,
+   "median": 2.007,
+   "max": 2.684
+  },
+  "poll_latency_s": {
+   "median": 0.30735278129577637,
+   "max": 6.31636905670166
+  },
+  "download_s": {
+   "median": 0.496,
+   "max": 0.723
+  },
+  "clock_skew_s_median": 0.391726016998291,
+  "note": "offset_s: when a new task became visible relative to the nearest 120 s boundary (poll interval adds up to --interval of delay); clock skew has 1 s resolution"
+ },
+ "events": [
+  {
+   "task_id": "1792419360-hf-ee4a7fa58f4378c1-0392997",
+   "seen_at": 1792419447.035933,
+   "offset_s": -32.964,
+   "poll_latency_s": 0.939,
+   "first_observation": true,
+   "id_epoch_minus_seen_s": -87.036,
+   "download_s": 0.51,
+   "image_bytes": 504836,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792419480-hf-ee4a7fa58f4378c1-0470355",
+   "seen_at": 1792419482.463962,
+   "offset_s": 2.464,
+   "poll_latency_s": 0.299,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.464,
+   "download_s": 0.35,
+   "image_bytes": 240708,
+   "image_size": [
+    810,
+    480
+   ]
+  },
+  {
+   "task_id": "1792419600-hf-ee4a7fa58f4378c1-0018291",
+   "seen_at": 1792419602.415778,
+   "offset_s": 2.416,
+   "poll_latency_s": 0.306,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.416,
+   "download_s": 0.225,
+   "image_bytes": 650387,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792419720-hf-ee4a7fa58f4378c1-1025966",
+   "seen_at": 1792419721.7653253,
+   "offset_s": 1.765,
+   "poll_latency_s": 0.3,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.765,
+   "download_s": 0.405,
+   "image_bytes": 645335,
+   "image_size": [
+    716,
+    480
+   ]
+  },
+  {
+   "task_id": "1792419840-hf-ee4a7fa58f4378c1-0710497",
+   "seen_at": 1792419841.8148966,
+   "offset_s": 1.815,
+   "poll_latency_s": 0.323,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.815,
+   "download_s": 0.595,
+   "image_bytes": 265304,
+   "image_size": [
+    720,
+    480
+   ]
+  },
+  {
+   "task_id": "1792419960-hf-ee4a7fa58f4378c1-1123762",
+   "seen_at": 1792419962.0070724,
+   "offset_s": 2.007,
+   "poll_latency_s": 0.32,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.007,
+   "download_s": 0.626,
+   "image_bytes": 375235,
+   "image_size": [
+    718,
+    480
+   ]
+  },
+  {
+   "task_id": "1792420080-hf-ee4a7fa58f4378c1-1205459",
+   "seen_at": 1792420081.6935658,
+   "offset_s": 1.694,
+   "poll_latency_s": 0.467,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.694,
+   "download_s": 0.471,
+   "image_bytes": 218542,
+   "image_size": [
+    480,
+    651
+   ]
+  },
+  {
+   "task_id": "1792420200-hf-ee4a7fa58f4378c1-0837423",
+   "seen_at": 1792420202.6844602,
+   "offset_s": 2.684,
+   "poll_latency_s": 0.769,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.684,
+   "download_s": 0.555,
+   "image_bytes": 395799,
+   "image_size": [
+    480,
+    551
+   ]
+  },
+  {
+   "task_id": "1792420320-hf-ee4a7fa58f4378c1-0299167",
+   "seen_at": 1792420322.2767935,
+   "offset_s": 2.277,
+   "poll_latency_s": 0.289,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.277,
+   "download_s": 0.496,
+   "image_bytes": 542644,
+   "image_size": [
+    640,
+    480
+   ]
+  },
+  {
+   "task_id": "1792420440-hf-ee4a7fa58f4378c1-0229775",
+   "seen_at": 1792420442.5299532,
+   "offset_s": 2.53,
+   "poll_latency_s": 0.285,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -2.53,
+   "download_s": 0.414,
+   "image_bytes": 479570,
+   "image_size": [
+    718,
+    480
+   ]
+  },
+  {
+   "task_id": "1792420560-hf-ee4a7fa58f4378c1-0436443",
+   "seen_at": 1792420561.3073735,
+   "offset_s": 1.307,
+   "poll_latency_s": 0.285,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.307,
+   "download_s": 0.723,
+   "image_bytes": 718653,
+   "image_size": [
+    480,
+    640
+   ]
+  },
+  {
+   "task_id": "1792420680-hf-ee4a7fa58f4378c1-0977337",
+   "seen_at": 1792420681.962584,
+   "offset_s": 1.963,
+   "poll_latency_s": 0.283,
+   "first_observation": false,
+   "id_epoch_minus_seen_s": -1.963,
+   "download_s": 0.588,
+   "image_bytes": 481627,
+   "image_size": [
+    480,
+    784
+   ]
+  }
+ ]
+}

@@ -1,0 +1,9 @@
+{
+ "iter": 209,
+ "commit": "8c572ce",
+ "dev_score": 0.9769591579446777,
+ "holdout_score": 0.9774001604159889,
+ "holdout_peak": 0.9774001604159889,
+ "dev_result": "results/harness/dev-iter209-8c572ce.json",
+ "accepted_at": "2026-10-20T10:13:40Z"
+}

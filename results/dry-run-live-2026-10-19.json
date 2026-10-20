@@ -1,0 +1,103 @@
+{
+ "mode": "live_rounds",
+ "summary": {
+  "rounds": 5,
+  "scored": 5,
+  "success": 5,
+  "mean_official": 0.9768511114596569,
+  "min_official": 0.9687533489468658,
+  "max_done_since_boundary": 28.72690773010254
+ },
+ "rounds": [
+  {
+   "task_id": "1792421040-hf-ee4a7fa58f4378c1-1235189",
+   "official": 0.9687533489468658,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9687563254546387,
+   "margin": 10.001977920532227,
+   "nonzero": 75502,
+   "steps": 398,
+   "attack_seconds": 24.89907431602478,
+   "round": 0,
+   "boundary": 1792421040.0,
+   "seen_since_boundary": 2.93220853805542,
+   "attack_start_since_boundary": 3.7907662391662598,
+   "done_since_boundary": 28.68984055519104
+  },
+  {
+   "task_id": "1792421160-hf-ee4a7fa58f4378c1-0856873",
+   "official": 0.980465892491432,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9804688661208822,
+   "margin": 10.014711380004883,
+   "nonzero": 26903,
+   "steps": 370,
+   "attack_seconds": 25.18973970413208,
+   "round": 1,
+   "boundary": 1792421160.0,
+   "seen_since_boundary": 2.7493813037872314,
+   "attack_start_since_boundary": 3.5019309520721436,
+   "done_since_boundary": 28.691670656204224
+  },
+  {
+   "task_id": "1792421280-hf-ee4a7fa58f4378c1-0529088",
+   "official": 0.9832789185910429,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9832818927343222,
+   "margin": 10.000943183898926,
+   "nonzero": 14474,
+   "steps": 356,
+   "attack_seconds": 24.767775297164917,
+   "round": 2,
+   "boundary": 1792421280.0,
+   "seen_since_boundary": 3.014784097671509,
+   "attack_start_since_boundary": 3.926030158996582,
+   "done_since_boundary": 28.6938054561615
+  },
+  {
+   "task_id": "1792421400-hf-ee4a7fa58f4378c1-1006678",
+   "official": 0.971024336982963,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9710273111837533,
+   "margin": 10.039203643798828,
+   "nonzero": 68495,
+   "steps": 333,
+   "attack_seconds": 25.215837717056274,
+   "round": 3,
+   "boundary": 1792421400.0,
+   "seen_since_boundary": 2.797403573989868,
+   "attack_start_since_boundary": 3.4864985942840576,
+   "done_since_boundary": 28.702336311340332
+  },
+  {
+   "task_id": "1792421520-hf-ee4a7fa58f4378c1-0508541",
+   "official": 0.9807330602859806,
+   "variant_disagreement": false,
+   "reasons": [
+    "success"
+   ],
+   "est": 0.9807360350615926,
+   "margin": 10.040349960327148,
+   "nonzero": 21243,
+   "steps": 365,
+   "attack_seconds": 25.906064748764038,
+   "round": 4,
+   "boundary": 1792421520.0,
+   "seen_since_boundary": 1.9666519165039062,
+   "attack_start_since_boundary": 2.820842981338501,
+   "done_since_boundary": 28.72690773010254
+  }
+ ]
+}
