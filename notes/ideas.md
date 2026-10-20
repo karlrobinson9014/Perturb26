@@ -17,7 +17,7 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] Diagnose RMSE within a class: on images where our final class equals the leaders', compare nonzero counts (is the gap search quality, not class?).
 
 ## Objective / trade-off
-- [ ] Sweep `kappa` (search hinge target) and `safety_margin`; the score rewards margin up to 10 logits at 0.003/logit.
+- [x] Sweep `kappa` (search hinge target) and `safety_margin`; the score rewards margin up to 10 logits at 0.003/logit. Iter 211 (operator): safety 10 / target 10.5 / kappa 11.5-12 all worse (16-img -0.00013..-0.00034, full dev -0.00025); a hard margin-10 floor hurts the one image no lane can hold at 10 (0.9346 -> 0.9307).
 - [ ] Choose the margin target per image from the marginal score: stop pruning when d(score)/d(nnz) turns negative.
 - [ ] Calibrate `safety_margin` from the bench's `variant_disagreement` rate (how small can it get without failures?).
 
@@ -65,3 +65,4 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
   map back with the crop offset.
 
 - [ ] Learned sparse universal init (Meta Adversarial Perturbations, Yuan 2021) for EfficientNetV2-L from public train images (never dev): seed discovery lanes so they surface far classes (leaders' best class clean rank median ~90).
+- [ ] The hard image (clean class held to margin ~1-5 only, 0.93-0.935): it alone costs ~0.0007 of the mean. Find out why no lane reaches margin 10 there (target class? budget?) and give such images more lanes on the strongest class (iter 211).

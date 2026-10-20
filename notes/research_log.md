@@ -448,3 +448,36 @@ Result (negative; code in this commit: `retarget_lam` option, default 0 = off, b
 - Next: the re-target path is saturated (warm start helped, lam/momentum inheritance does not). Remaining levers are
   classes the lanes never surface (leaders' best class has clean rank median ~90; ours come from the lanes' top-3) and
   in-class sparsity of the *non-re-targeted* lanes, which decide most images.
+
+## 2026-10-20 iter 211: operator directive: hard margin >= 10, prune floor 10.5, push toward 11-12
+Base: iter 209's accepted code (dev 0.97696 harness; margins already 9.98-10.28 on 63/64 images, 12 images at
+9.977-9.999, the 64th is the alias image at 1.1).
+Hypothesis (operator): treat margin >= 10 as a hard requirement (`safety_margin` 10, so only candidates with fp32 margin
+>= 10 are kept), hold the L1 schedule above 10.5 (`target_margin` 10.5) and push the objective until 11-12 (`kappa`),
+expecting ~0.98 and no TF32 risk. Counter-expectation from the data: the accepted run already holds margin ~10.0 and has
+0 variant disagreements in 64x3 variants, so the margin term is already ~saturated (12 images below 10 lose < 1e-5 each);
+a higher hold margin needs more changed values (RMSE), so I expect a small loss. Measured either way.
+Plan: config-only 16-image runs vs the same 16 images in `results/harness/dev-iter209-8c572ce.json`:
+safety 10 alone; safety 10 + target 10.5 + kappa 11.5; safety 10 + target 10.5 + kappa 12; full dev of the best.
+Result (negative; code in this commit: defaults `safety_margin` 10.0, `target_margin` 10.5, `kappa` 12.0 per the directive,
+left in so the harness measures it independently):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter211-<tag>.json`),
+  vs the same 16 images in `results/harness/dev-iter209-8c572ce.json` (0.97630, nonzero median 45.1k):
+  | tag | config | mean | delta | up | nonzero median | min margin |
+  |---|---|---|---|---|---|---|
+  | s10 | safety 10 | 0.97617 | -0.00013 | 6/16 | 45.3k | 9.999 |
+  | t105k115 | safety 10, target 10.5, kappa 11.5 | 0.97596 | -0.00034 | 4/16 | 45.9k | 10.016 |
+  | t105k12 | safety 10, target 10.5, kappa 12 | 0.97604 | -0.00026 | 6/16 | 45.0k | 10.018 |
+  All 16/16 success, 0 variant disagreements, t max <= 21.86 s.
+- Full dev with t105k12 as default (`python -m bench.run_bench --out results/dev-iter211-agent.json`): **0.97671** vs best
+  0.97696 (-0.00025), 64/64, 0 disagreements, p95 21.84 s / max 21.87 s; 20/64 images up, nonzero median 38.0k vs 36.0k.
+  Margins now 10.0-10.49 (was 9.98-10.28).
+- The one hard image (20261009T064817Z-0001, the base run's only margin < 10: margin 1.12, 0.93465) got worse: no lane
+  reaches fp32 margin 10, so the hard rule leaves only the highest-margin fallback (margin 5.24, 296k nonzeros, 0.93073).
+  The estimator already trades margin against RMSE correctly there; a hard floor removes that trade.
+- Conclusion: the premise (0.955 -> 0.98) dates from v0; the accepted miner already sits at margin ~10.0 with 0 TF32
+  disagreements in 64x3 scored variants, so there is no margin or numeric-risk gain left to take. Holding 10.5 costs
+  ~5 % more nonzeros (RMSE) for zero score. Expect the harness to discard; the old defaults (1.0 / 10.05 / 10.5) are better.
+- Next: the gap to the leaders (~0.002) is the target class and in-class sparsity, not margin. If the operator wants
+  extra TF32 headroom, a cheap form is target_margin 10.1 (12 images sit at 9.98-10.0 and lose < 1e-5 each, so this is
+  insurance, not score).
