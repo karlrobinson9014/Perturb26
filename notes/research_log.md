@@ -705,3 +705,41 @@ Result (negative for the directive; no miner26 change, probe in `tools/localsear
 - No bench (no candidate; the in-budget versions were benched in iters 212-216). Recommendation to the operator, now
   backed by an unlimited-time bound: retire the prune/swap directive. Put research into the basin (target class /
   support): images where competitors beat us have different classes, not tighter supports of ours.
+
+## 2026-10-20 iter 218: operator directive (seventh time): exact prune/swap only where it pays, the margin overshoot
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 212-216 ran prune/swap on every image and lost or tied,
+because the polish replaced ISTA steps on images where the final point is already tight at margin 10.0. Iter 217's
+unlimited-time bound found ~90 % of the recoverable gain on images whose final margin overshoots (10.2: +8.9e-4,
+10.09: +1.4e-4). Concrete reason this run differs: it is *conditional and sized*. Only when the leader's fp32 margin
+is above `clip_min` (10.05) does the loop stop `clip_time` early. Then the reserve runs exact rounds on the chosen
+candidate: one margin gradient, and 8 candidates per round in two batch-4 fp32 checks. The candidates are drop-k
+(first-order-cheapest support entries, with k from the cumulative cost at 0.3..1.0 x the slack above 10) and
+drop-k + add-a swaps (k at 1.5..3 x slack, adds the highest-|g| zero entries to cover the deficit). The best exact
+est is accepted.
+Numbers: `results/harness/dev-iter209-8c572ce.json` has 18/64 images with final margin > 10.05 and 10/64 > 10.1
+(max 10.276). Iter 217's per-image gains on overshoot images were 1.4e-4..8.9e-4. Expected: ~+1e-4 mean if
+3-4 rounds capture half of the unlimited-time gain on overshoot images, with ~0 cost on the other 46.
+Plan: `clip_min` / `clip_time` (0 = off) in AttackConfig; probe overshoot images, then `--limit 16` vs the same
+16 images (0.97630), then full dev.
+Result (neutral; code in this commit: `clip_time` (0 = off, behaviour unchanged) / `clip_min` options, `Attacker._clip`):
+- First version sized k from the cumulative first-order cost (k where sum g*q = 0.3..4 x slack): it proposed
+  2000-4000 drops on 0.05-0.25 of slack. 1-3 % of the support has g*q < 0, so the cumulative cost stays negative for
+  thousands of entries, but dropping them together costs 3-10 logits. Zero accepts. Replaced by a geometric ladder
+  (drop scale/8..2*scale, swaps drop 2a + add a), with the scale x2 when the largest drop wins and /4 when nothing does.
+- Probe (scratch script, Attacker.run at 22 s, `clip_time` 0.6): dev images 16-24, 3/9 overshoot, clip gains 2.0e-5,
+  8.2e-6, 1.6e-4 (~0.1 s/round). Dev image 2 (key ...063626Z-0002): +3.2e-4, +3.8e-4 (0.6 s), +5.4e-4 (1.0 s, 9 rounds).
+  On that image, dropping the 64-256 most negative-g*q entries *raises* the margin 10.06 -> 10.57, and the next rounds
+  prune into that slack.
+- `python -m bench.run_bench --limit 16 --attack-config '{"clip_time":0.6}' --out results/dev16-iter218-clip06.json`:
+  0.97615 vs 0.97630 on the same 16 images in `results/harness/dev-iter209-8c572ce.json` (-0.00015, 7/16 up).
+  `... '{"clip_time":1.0}' --out results/dev16-iter218-clip10.json`: 0.97630 (-0.000004, 6/16 up). Both 16/16,
+  0 disagreements, time_max 21.86 / 21.91 s. Per-image deltas are dominated by basin noise (one image -0.0021 at
+  0.6 s, +0.0005 at 1.0 s). One image (...195350Z-0002) lost in both runs (-0.00065 / -0.00044) and ended at margin
+  10.32: the reserve starts when the *mid-run* leader overshoots, so ISTA loses time even when the final pick gives
+  the clip nothing to recover.
+- Conclusion: the seventh prune/swap variant, which only runs on overshoot images, is also neutral on 16 images. The
+  gain is real per image (1e-5..5e-4 on the ~25 % of images that overshoot), but ~+3e-5 mean, ~10x below the
+  run-to-run class noise. No full dev bench (rule: only above +0.0003).
+- Next: the sign finding is the useful one. On some images, entries with g*q < 0 are a block whose removal raises
+  the margin by 0.3-0.5. An ISTA-side version (zero the most negative g*q entries of the leader at each check,
+  idea "Entries working against the margin") would act during the search instead of after it.
