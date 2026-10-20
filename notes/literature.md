@@ -75,3 +75,13 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
 - Efficient Untargeted White-Box Adversarial Attacks Based on Simple Initialization (Zhou et al., 2024),
   https://consensus.app/papers/details/857dd1fa722956ccb112e7a968c935d3/ : a guided init instead of random restarts.
   Motivated warm-starting re-targeted lanes from the leader's iterate (`retarget_warm`): iter 209, +0.0002 (16 img), in the dev 0.97683 stack.
+- A Proximal-Gradient Homotopy Method for the Sparse Least-Squares Problem (Xiao, Zhang, 2012/2013 SIAM J. Optim.),
+  https://consensus.app/papers/details/f6959686e0875ac4abb3a34f67f771dd/ : ISTA over a sequence of regularization weights,
+  each stage warm-started from the previous solution, keeps every iterate on the path sparse. Here: re-targeted lanes
+  inherit the leader's L1 weight as well as its iterate (`retarget_lam`), tried iter 210 (see research_log).
+- Continuation Path with Linear Convergence Rate (Ndiaye et al., 2021),
+  https://consensus.app/papers/details/5606d7d54eb8520e92870c3cf3ceb2d6/ : the active set changes little between nearby
+  regularization weights, so path-following reuses supports; supports the iter 210 hypothesis.
+- Meta Adversarial Perturbations (Yuan, Chen, Yu, 2021), https://arxiv.org/abs/2111.10291 : a shared initialization
+  that flips most images after one gradient step. A learned universal *sparse* init for EfficientNetV2-L (from public
+  train images, never dev) could seed the discovery lanes. Not tried.

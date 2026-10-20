@@ -11,6 +11,7 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] Class prior: from the public dataset's train split (never dev/test), which adversarial classes win for
       which clean classes / globally; seed targeted lanes with the prior's top classes.
 - [x] Warm-start re-targeted lanes from the leading lane's iterate d (`retarget_warm`): iter 209, 16-img +0.00021 vs momentum alone (8/16 up, nonzero median 45.1k vs 45.0k); made default with momentum 0.5, full dev in research_log.
+- [x] Warm-start + inherited L1 weight (`retarget_lam`, homotopy, Xiao & Zhang 2012): iter 210, 16-img 1.0 -0.00015, 0.5 -0.00002; a class switch is not a nearby problem, off.
 - [ ] Warm-start variants: copy the leader's momentum too; start from a pruned leader (only |d|>0.5 entries); warm-start from the lane that surfaced the target class instead of the leader.
 
 - [ ] Diagnose RMSE within a class: on images where our final class equals the leaders', compare nonzero counts (is the gap search quality, not class?).
@@ -34,7 +35,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [x] Shrink profile as a smoothed step at the 0.5 rounding point (`rw_step`): iter 207, 16-img width 0.1 -0.00004 (lo 0.14/hi 2.64) / +0.0001 (hi 4); sharp step (0.05, lo 0.1, hi 3) -0.0006. No gain over the power profile; option kept, off.
 - [x] Re-tune lr / lam_up / lam_down under rw_power=2: iter 207, lr 0.015 +0.00008, lam_up 1.08/lam_down 0.95 -0.00014 (16 img). Flat: the in-class search is at its optimum for these knobs.
 - [x] Momentum / extrapolation on the ISTA iterate d (accelerated proximal IHT, Zhang 2018, Wu 2019; EAD's FISTA): iter 208, 16-img vs iter 207: gradient EMA beta 0.5 +0.0005 (12/16 up, nonzero median 45.0k vs 50.6k), beta 0.8 +0.0002, FISTA-style extrapolation 0.3 +0.0003. Momentum 0.5 made default (full dev: see research_log).
-- [ ] Momentum follow-ups: beta 0.3; momentum + lr retune (the EMA smooths, so a larger lr may now be stable); Nesterov look-ahead (gradient at round(d + beta*m)); oscillation-triggered restart (O'Donoghue & Candes 2015) when a lane's lam flips direction.
+- [x] Momentum beta 0.3: iter 210, 16-img -0.0001 vs 0.5 (6/16 up); 0.5 stays.
+- [ ] Momentum follow-ups: momentum + lr retune (the EMA smooths, so a larger lr may now be stable); Nesterov look-ahead (gradient at round(d + beta*m)); oscillation-triggered restart (O'Donoghue & Candes 2015) when a lane's lam flips direction.
 - [x] Decaying per-lane step size (`lr_final`, MDCS, Tao 2026), with momentum 0.5: iter 209, 16-img lr_final 0.3 -0.00042, 0.5 -0.00022, lr 0.015 + lr_final 0.3 -0.00010 (4/16 up each). Worse the more it decays: late steps still need full size (lam keeps moving the boundary). Option kept, off.
 - [ ] The opposite of decay: lr warm-up / larger late lr, or lr tied to lam (lam rising = support still too large).
 - [ ] Support shrinking late in the budget (Non-Lipschitz Attack, Lin 2023): freeze entries at 0 once they have left the support, so the last phase only prunes.
@@ -61,3 +63,5 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
   pure crop (notes/scoring.md, 2026-10-19).
 - [ ] Attack the 480x480 crop directly (skip the no-op resize in PREPROCESS) for a slightly faster step;
   map back with the crop offset.
+
+- [ ] Learned sparse universal init (Meta Adversarial Perturbations, Yuan 2021) for EfficientNetV2-L from public train images (never dev): seed discovery lanes so they surface far classes (leaders' best class clean rank median ~90).

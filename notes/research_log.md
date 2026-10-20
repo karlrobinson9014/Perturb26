@@ -414,3 +414,37 @@ Result (code in this commit: momentum 0.5 (iter 208) + `retarget_warm` = True as
   `bash harness/gate.sh` passes.
 - Next: warm-start variants (copy the leader's momentum; start from only its |d| > 0.5 entries; start from the lane that
   surfaced the class); late-budget support shrinking (Lin et al. 2023); class prior from the public train split.
+
+## 2026-10-20 iter 210: homotopy warm start for re-targeted lanes (inherit the leader's L1 weight)
+Base: iter 209's accepted code (dev 0.97696 harness / 0.97683 agent; momentum 0.5 + `retarget_warm`).
+Hypothesis: a warm-started re-targeted lane copies the leader's sparse d but restarts with lam = 0 and `started` False,
+so until it holds margin 10.05 *in its new target class* it gets no shrink at all: every step adds lr*|g| to every
+entry and the support densifies, then lam0 = 1.0 has to prune it again from scratch. The proximal-gradient homotopy
+method (Xiao & Zhang 2012) warm-starts each stage with both the previous solution *and* a regularization weight close
+to the previous one, which keeps every iterate on the path sparse; continuation-path analyses (Ndiaye et al. 2021)
+show the active set changes little between nearby weights. Here: re-targeted lanes start with lam = retarget_lam *
+lam[leader] and `started` True, so they keep shrinking while they move into the target class; lam_down (0.97/step)
+relaxes the weight by itself if the class cannot be held (0.97^25 = 0.47). Iter 209 per image: nonzero median 36.0k vs
+the leaders ~28k (re-targeted lanes win the image on a minority of images, so the effect is diluted; expect +0.0001..0.0005).
+Plan: `retarget_lam` in AttackConfig (0 = off, current behaviour); `--limit 16` with 1.0 and 0.5 vs the same 16 images
+in the accepted run `results/harness/dev-iter209-8c572ce.json`; full dev of the best if it gains.
+Result (negative; code in this commit: `retarget_lam` option, default 0 = off, behaviour unchanged):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter210-<tag>.json`),
+  vs the same 16 images in the accepted run `results/harness/dev-iter209-8c572ce.json` (0.97630, nonzero median 45.1k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | l10 | retarget_lam 1.0 | 0.97615 | -0.00015 | 9/16 | 47.3k |
+  | l05 | retarget_lam 0.5 | 0.97628 | -0.00002 | 7/16 | 45.0k |
+  | m3 | momentum 0.3 (side test, ideas.md) | 0.97620 | -0.00010 | 6/16 | 45.3k |
+  All 16/16 success, 0 variant disagreements, t max <= 21.87 s.
+- Per image, 10-12 of 16 deltas are within +-0.0001: the image is decided by a lane that is never re-targeted, so the
+  re-targeted lanes' path barely matters on the mean. Where it matters (two images, -0.0025 / -0.0006 at 1.0) the
+  inherited weight hurts: the leader's lam is tuned to hold margin 10 in the *leader's* class, and in a new class the
+  lane must first gain ~10+ logits, which a full shrink slows down (it spends its short budget relaxing lam at 0.97/step).
+  The homotopy argument (Xiao & Zhang 2012) assumes nearby problems; a class switch is not a nearby problem.
+- Momentum 0.3 is not better than 0.5 (iter 208: 0.5 > 0.8 > 0); 0.5 stays.
+- No full dev bench (no candidate). `python -m pytest -q tests`: 29 passed (one earlier contract-test failure was CPU
+  contention while a bench ran; it passes on an idle box).
+- Next: the re-target path is saturated (warm start helped, lam/momentum inheritance does not). Remaining levers are
+  classes the lanes never surface (leaders' best class has clean rank median ~90; ours come from the lanes' top-3) and
+  in-class sparsity of the *non-re-targeted* lanes, which decide most images.
