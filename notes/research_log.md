@@ -667,3 +667,41 @@ Result (negative / neutral; code in this commit: `freeze_at` / `freeze_tau` / `f
   median ~90), or a second independent search seeded from a different class at 0.5 of the budget.
   Side note: `tests/test_attack_early_exit.py::test_ordinary_image_runs_to_the_deadline` failed once on a cold GPU
   (first pytest run of the session), passed on re-run with and without this change: flaky timing test.
+
+## 2026-10-20 iter 217: operator directive (sixth time): the time-unlimited ceiling of exact batched prune/swap
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212-216 tried five in-budget variants (-0.0006..+0.00007
+on 16 images). All of them measured what the move set buys *inside* the 22 s budget, where polish competes with ISTA
+steps. Concrete reason this run differs: it removes the budget. If the move set ("drop k", "drop k + add k", plus
+sign flips of entries that oppose the margin, which keep the count and were never tried) can reach a much better
+point given unlimited exact evaluations, the directive is a speed problem worth engineering. If even 60 s of
+exact batched local search after the 22 s attack gains < 1e-4/image, the move set itself is exhausted and no
+scheduling of it can reach "1 % -> 0.3 %".
+Hypothesis: ISTA's final point is near-KKT for the L1-penalised margin objective (iter 214: best adds gain 2e-4..6e-4
+logit/value, typical drops cost ~1e-3), so the ceiling is small, ~1e-4/image. Expected gain of in-budget use: ~0.
+Plan: `tools/localsearch_ceiling.py`: Attacker.run at 22 s on dev images, then T s of exact fp32 local search with 32
+candidates per forward (validator path: PREPROCESS on the full image), first-order ranked from the fp32 margin gradient
+at the current point, accepting the best exact improvement (safety margin 1.0 as in the attack). Log est gain vs time.
+Result (negative for the directive; no miner26 change, probe in `tools/localsearch_ceiling.py`):
+- `python -m tools.localsearch_ceiling --limit 8 --polish 60 --out results/localsearch-ceiling-iter217.json`
+  (dev images 0-7, default AttackConfig at 22 s, then exact local search; stops after 20 rounds in a row with no improvement):
+  | image | nonzeros before -> after | margin before -> after | gain | stuck after |
+  |---|---|---|---|---|
+  | 0 | 22457 -> 22340 | 10.005 -> 10.001 | +3.1e-5 | 8.7 s |
+  | 1 | 43400 -> 42687 | 10.094 -> 10.002 | +1.4e-4 | 12.5 s |
+  | 2 | 21456 -> 18125 | 10.215 -> 10.001 | +8.9e-4 | 15.1 s |
+  | 3 | 60164 -> 60003 | 10.007 -> 10.000 | +2.6e-5 | 10.7 s |
+  | 4 | 65688 -> 65480 | 10.032 -> 10.002 | +3.2e-5 | 8.4 s |
+  | 5 | 71152 -> 70750 | 10.015 -> 9.998 | +5.2e-5 | 9.3 s |
+  | 6 | 105388 -> 105359 | 9.992 -> 10.000 | +2.8e-5 | 8.0 s |
+  | 7 | 31136 -> 30944 | 10.026 -> 10.000 | +5.0e-5 | 7.9 s |
+  Mean **+1.6e-4/image** with unlimited time. A 20 s single-image smoke run gave image 0 +5.6e-5, so random drops add a little noise.
+  Accepted moves: cheap first-order drops (k 1-512), drop 2k + add k swaps, random drops from the cheap pool. Sign flips
+  (alone or flip k + drop 2k) were never the best move (0 accepts).
+- Confirms the hypothesis. ISTA's final point is near-KKT under this move set. Exact search stalls within 8-15 s
+  even when time is free, and removes 0.03-1.6 % of the support (image 2: 15 % because its margin had 0.2 of slack).
+  The "1 % -> 0.3 %" route needs ~70 % fewer nonzeros. That is ~50x what unlimited local search reaches, so no
+  scheduling, batching or fp16 screening of these moves can get there. The only recoverable piece is margin overshoot
+  above ~10.05 (images 1 and 2, ~90 % of the total gain), which is idea "Clip margin overshoot only" (~+5e-5 mean in budget).
+- No bench (no candidate; the in-budget versions were benched in iters 212-216). Recommendation to the operator, now
+  backed by an unlimited-time bound: retire the prune/swap directive. Put research into the basin (target class /
+  support): images where competitors beat us have different classes, not tighter supports of ours.
