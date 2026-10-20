@@ -22,6 +22,9 @@ next iteration can pick up.
   (renames and new files count too). If something outside needs a change (bench, harness, prompts),
   write the proposal in `notes/harness_proposals.md` instead.
 - Run what the harness will run: `bash harness/gate.sh` (pytest + import + smoke bench).
+- Background jobs: wait on the job's **PID** (`cmd > log 2>&1 & pid=$!; while kill -0 $pid 2>/dev/null; do sleep 30; done`),
+  never with `pgrep -f` / `pkill -f` on its command line (the pattern matches the waiting shell itself and the
+  wait never ends). The harness kills the session at 90 min.
   The GPU is shared with nothing else during your iteration; long benches are fine when the item needs them.
 
 ## 3. Record

@@ -40,6 +40,11 @@ numbers from the last result JSON), and the measurement plan.
 - Iterate quickly with `--limit 16` (or less), then run the **full dev bench once**:
   `python -m bench.run_bench --out results/dev-iter<N>-agent.json`.
   The harness re-runs this itself; your number only informs your write-up.
+- Long benches: a full dev bench takes ~25 min, more than one foreground Bash call allows. Start it in the
+  background and wait on its **PID** (`python -m bench.run_bench ... > log 2>&1 & pid=$!`, then
+  `while kill -0 $pid 2>/dev/null; do sleep 30; done`). Never wait with `pgrep -f "<pattern>"` or
+  `pkill -f`: the pattern also matches the waiting shell's own command line, so the wait never ends (iter 204
+  idled ~60 min that way until the harness killed it). The harness kills the session at 90 min; plan for <= 70.
 - Look at the per-image records, not just the mean: failures, `variant_disagreement`, time near budget, margins.
 
 ## 4. Record (whether or not it helped)
