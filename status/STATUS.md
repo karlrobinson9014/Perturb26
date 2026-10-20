@@ -29,3 +29,4 @@ Ceiling 0.99303. Loop stop target `TARGET_SCORE` = 0.993 (harness/loop.env).
 - 2026-10-19 iter 201 (build): early exit when no candidate can beat the found one (alias images stop after 1 step at the ceiling); `tests/test_attack_early_exit.py`; gates pass, smoke 0.96927 (budget 8).
 - 2026-10-19 iter 202 (research): greedy prune after the search: 16-img 0.97300 vs 0.97365, reverted; candidates are already tight at margin 10 (research_log).
 - 2026-10-19 iter 203 (research): batched fp32 checks every 8 steps (`check_every`): 302 -> 437 steps/image, dev 0.97529 vs best 0.97484, 64/64 success, 0 disagreements (`results/dev-iter203-agent.json`).
+- 2026-10-20 iter 204 (research): top-3 logit target classes + extra re-target round at 0.6 (with iter 203 check_every=8): dev 0.97561 vs best 0.97484, 64/64, 0 disagreements; B=8 lanes worse; surfaced classes exhausted (`results/dev-iter204-agent.json`).

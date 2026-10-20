@@ -210,3 +210,35 @@ Result (code kept in this commit, `check_every = 8` default):
   that the lanes are near their plateau and the remaining gap is the class. The freed time is the useful part: it
   is the budget for more lanes (B=8 ~75 ms/grad) or more re-target rounds, which were too costly with per-step checks.
 - Next: B=8 lanes (4 discovery + 4 targeted) with check_every=8; or a second re-target round at ~60 % of the budget.
+
+## 2026-10-19 iter 204: wider target-class discovery (top-k runner-ups, more re-target rounds)
+Hypothesis: the class is the lever, and the re-target step sees too few classes. Lane diagnostic on 16 dev images
+with iter-203's `check_every=8` re-applied (scratch script, est scores, mean 0.97447): a re-targeted lane wins 4/16
+images, by a lot when it does (img 3: 0.98050 targeted on 224 vs 0.97452 best untargeted; img 8: 0.97676 vs 0.97270;
+img 10: 0.97603 vs 0.97467), while the untargeted lanes often collapse onto one class (img 6: all four on 148;
+img 7: three on 311). `_retarget` only offers each lane's best class and current argmax, i.e. 1-3 distinct classes.
+Plan: rank target classes also from every lane's top-k fp32 logits at the switch (`switch_topk`), and allow
+extra re-target rounds (`extra_switches`, freeing the weakest non-leader, non-young lanes), plus a B=8 variant with
+four more LSE-tau discovery lanes. Re-apply iter 203's `check_every=8` (discarded only as below MIN_GAIN; it frees
+the time these rounds need). Compare on `--limit 16`, full dev bench with the best.
+Result (code kept in this commit: `check_every=8`, `switch_topk=3`, `extra_switches="0.6"`, `n_switch_extra=1`):
+- 16 images, est score (scratch lane script, same images and budget 22 s):
+  | config | mean est | steps |
+  |---|---|---|
+  | k8 (iter 203 re-applied) | 0.97447 | ~437 |
+  | + switch_topk 3 | 0.97452 | ~437 |
+  | + switch_topk 3 + extra round at 0.6 | **0.97474** | ~437 |
+  | B=8 (4 more LSE-tau lanes), n_switch 4, topk 3 | 0.97373 | ~256 |
+  B=8 loses: the steps drop by 40 % and the extra discovery lanes mostly land in the same classes.
+  The per-image max over all four 16-img runs is only 0.97507: among the classes these lanes surface, the
+  best one is worth only ~+0.0006 over a single run. Run-to-run class luck is large on single images
+  (img 3: 0.9805 / 0.9745 / 0.9766 / 0.9773 across configs) but small on the mean.
+- Full dev (`python -m bench.run_bench --out results/dev-iter204-agent.json`): **mean 0.97561** vs best 0.97484
+  (+0.00077) and iter 203 0.97529 (+0.0003); 64/64 success, 0 variant disagreements, time p95 21.84 s / max 21.86 s.
+  Against iter 203 per image: 25 up / 21 down / 18 equal; the gain comes from 4 images up 0.0027-0.0045
+  (a better re-target class), offset by many small losses (max -0.0019) from lanes freed for the extra round.
+- Conclusion: wider discovery among *the classes our lanes surface* gives about +0.0003 to +0.0008, below MIN_GAIN.
+  The 0.003-0.004 gap to the leaders is not reachable by re-ranking the same few classes; it needs either
+  classes the lanes never surface (prior over adversarial classes, from a non-dev source) or lower RMSE inside a class.
+- Next: (a) class prior learned from the public train split (ideas.md); (b) per-class RMSE: compare our support with
+  the leaders' on images where we already hit their class (iter 2 data) to see if it is the search, not the class.

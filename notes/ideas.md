@@ -4,13 +4,15 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 
 ## Target class (highest value, see research_log 2026-10-19)
 - [ ] Measure run-to-run class variance (same image, several seeds/timings): iter 202 saw image 3 at 0.9776 vs 0.9709 between runs; if large, more independent discovery lanes / restarts pay directly.
-- [ ] B=8 lanes (9.4 ms/img-step): 4 discovery objectives + 4 targeted lanes fed from them.
-- [ ] Re-target several times (e.g. at 25 %, 45 %, 65 % of the budget), each time replacing the worst lanes.
+- [x] B=8 lanes: iter 204, 16-img est 0.97373 vs 0.97447 (B=4); 40 % fewer steps, extra lanes find the same classes. Discarded.
+- [x] Re-target several times: iter 204, one extra round at 0.6 (1 lane) part of the +0.0003 above; small.
 - [ ] Discovery lanes without L1 at higher lr (they only need to reveal a class, not a sparse solution).
-- [ ] Candidate classes from the top-k of each discovery lane's logits, not only its argmax.
+- [x] Candidate classes from the top-k of each discovery lane's logits, not only its argmax: iter 204, with an extra re-target round at 0.6, dev 0.97561 (+0.0003 over iter 203); per-image oracle over 4 configs on 16 imgs only +0.0006, so the surfaced classes are exhausted.
 - [ ] Class prior: from the public dataset's train split (never dev/test), which adversarial classes win for
       which clean classes / globally; seed targeted lanes with the prior's top classes.
 - [ ] Warm-start: the best untargeted solution's support as the init of a targeted lane on its class.
+
+- [ ] Diagnose RMSE within a class: on images where our final class equals the leaders', compare nonzero counts (is the gap search quality, not class?).
 
 ## Objective / trade-off
 - [ ] Sweep `kappa` (search hinge target) and `safety_margin`; the score rewards margin up to 10 logits at 0.003/logit.
