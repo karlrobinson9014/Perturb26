@@ -280,3 +280,34 @@ lr*lam*((|d|+0.3)/0.8)^p, weights from the pre-step iterate):
 - Next: the shrink profile is now a lever. Try a profile aimed straight at the rounding point (e.g. threshold that
   is small below 0.5 and large above it, a smoothed step) and retune lam_up/lam_down/lr with it, since the adaptive
   lam was tuned for plain L1.
+
+## 2026-10-20 iter 206: stack iter 203 + 204 (+ 205), then B=8 lanes
+Operator task: stack the two near-misses (iter 203 `check_every=8`, iter 204 `switch_topk=3` + extra re-target
+round at 0.6), then try B=8 lanes (4 discovery + 4 targeted) on --limit 16.
+Note: iter 204's own full dev bench already *was* 203 + 204 stacked (0.97561, `results/dev-iter204-agent.json`), and
+iter 205's patch (`logs/rejected-iter-205.patch`) is 203 + 204 + the shrink profile `rw_power=2, rw_eps=0.3`
+(dev 0.97628, 58/64 up vs iter 204). With MIN_GAIN now 0.0005 the stack that adds most is the full 203+204+205
+code, so this iteration re-applies `miner26/attack.py` from that patch unchanged and re-measures it on full dev
+(a second sample of its run-to-run noise), instead of re-running the 203+204-only bench already on record.
+Hypothesis for step 3: the freed steps (~430/image) can pay for 8 lanes; iter 204's B=8 (4 more LSE lanes) lost
+0.001 on 16 images because steps fell 40 % while the extra lanes reached the same classes. With the shrink
+profile, lanes converge faster in-class, so more targeted lanes (n_switch 4) might now pay off.
+Plan: full dev on the stack (background); then `--limit 16` B=8 (`n_switch` 4) and B=6 against the stack's
+same 16 images in `results/dev-iter206-agent.json`.
+Result (code in this commit: `miner26/attack.py` from `logs/rejected-iter-205.patch`, i.e. check_every=8,
+switch_topk=3, extra_switches="0.6", rw_power=2, rw_eps=0.3; no other change):
+- Full dev (`python -m bench.run_bench --out results/dev-iter206-agent.json`): **mean 0.97622** vs best 0.97484
+  (+0.00138, above MIN_GAIN 0.0005), 64/64 success, 0 variant disagreements, time p95 21.86 s / max 22.00 s,
+  ~435 steps/image. Iter 205's run of the same code gave 0.97624: run-to-run noise on the full mean is ~2e-5.
+- Lane count on 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter206-<tag>.json`),
+  compared to the same 16 images in the full run (0.97573):
+  | config | mean | images up | steps | nonzero median |
+  |---|---|---|---|---|
+  | B=4 (stack, from the full run) | 0.97573 | - | 436 | 45.1k |
+  | B=8, lanes x2, n_switch 4, n_switch_extra 2 (4 discovery + 4 targeted) | 0.97502 | 2/16 | 254 | 45.6k |
+  | B=6 (+ LSE tau 3 and 0.1), n_switch 3 | 0.97575 | 5/16 | 313 | 45.9k |
+- Conclusion: the stack holds (0.9762, twice). More lanes still do not pay. B=8 costs 42 % of the steps and loses
+  0.0007, the same result as iter 204's B=8 even with the shrink profile. B=6 ties. The freed steps are worth more as
+  in-class search depth than as extra class guesses from the same basins.
+- Next: the class lever needs classes from outside our lanes (class prior from the public train split); within a
+  class, tune the shrink profile (smoothed step at 0.5) and lr/lam_up/lam_down under rw_power=2.

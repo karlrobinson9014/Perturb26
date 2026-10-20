@@ -31,7 +31,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [x] Inverse reweighting (threshold * ((|d|+0.3)/0.8)^p, saturated entries shrink harder): iter 205, p=2 best,
       dev 0.97628 (+0.00144 vs best, +0.00067 vs iter 204), nonzero median 39.3k vs 44.2k.
 - [ ] Shrink profile as a smoothed step at the 0.5 rounding point (sigmoid((|d|-0.5)/w)), with retuned lam_up/lam_down/lr.
-- [ ] Re-tune lr / lam_up / lam_down under rw_power=2 (the adaptive lam was tuned for plain L1).
+- [ ] Re-tune lr / lam_up / lam_down under rw_power=2 (the adaptive lam was tuned for plain L1). Next after iter 206.
+- [ ] B>4 only pays if lanes get cheaper: e.g. B=6 with check_every=16 to win back steps.
 
 ## Prune
 - [x] Greedy first-order prune of the best candidate in the last 20 % of the budget (4 drop sizes per batched fp32 check): iter 202, 16-img 0.97300 vs 0.97365, discarded. Candidates are already tight at margin 10; only the overshoot above 10 is recoverable (~1e-5..4e-4/image).
@@ -44,7 +45,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] channels_last + fp16/bf16 autocast for the search; keep fp32 checks.
 - [ ] `torch.compile` / CUDA graphs on the fixed-size forward+backward (shapes vary per image; cache per shape).
 - [x] Defer fp32 checks: per-lane best projected candidate, verified in one batch every K steps: iter 203, K=8 +44 % steps (302 -> 437), dev 0.97529 vs 0.97484 (+0.00045, 60/64 images up).
-- [ ] With the freed time: B=8 lanes or a second re-target round (the check was ~40 % of the step before iter 203).
+- [x] With the freed time: B=8 lanes or a second re-target round: iter 204 (round) / iter 206 (lanes). Stack 203+204+205 = dev 0.97622;
+      B=8 (4 discovery + 4 targeted) 16-img -0.0007 (254 vs 436 steps), B=6 +0.00002. Lanes discarded; steps beat lanes.
 - [ ] Early exit once the estimate is at the ceiling (alias images); saves GPU, no score effect.
 
 ## Image geometry
