@@ -30,8 +30,10 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [x] Reweighted L1 (Candes 2008, threshold ~ 1/(|d|+eps)): iter 205, 16-img -0.0014..-0.0023, more nonzeros. Discarded.
 - [x] Inverse reweighting (threshold * ((|d|+0.3)/0.8)^p, saturated entries shrink harder): iter 205, p=2 best,
       dev 0.97628 (+0.00144 vs best, +0.00067 vs iter 204), nonzero median 39.3k vs 44.2k.
-- [ ] Shrink profile as a smoothed step at the 0.5 rounding point (sigmoid((|d|-0.5)/w)), with retuned lam_up/lam_down/lr.
-- [ ] Re-tune lr / lam_up / lam_down under rw_power=2 (the adaptive lam was tuned for plain L1). Next after iter 206.
+- [x] Shrink profile as a smoothed step at the 0.5 rounding point (`rw_step`): iter 207, 16-img width 0.1 -0.00004 (lo 0.14/hi 2.64) / +0.0001 (hi 4); sharp step (0.05, lo 0.1, hi 3) -0.0006. No gain over the power profile; option kept, off.
+- [x] Re-tune lr / lam_up / lam_down under rw_power=2: iter 207, lr 0.015 +0.00008, lam_up 1.08/lam_down 0.95 -0.00014 (16 img). Flat: the in-class search is at its optimum for these knobs.
+- [ ] Momentum / extrapolation on the ISTA iterate d (accelerated proximal IHT, Zhang 2018, Wu 2019): more progress per step, which is the one thing that has paid (iter 203).
+- [ ] l0 change control (Zhu 2021 homotopy attack): cap how many entries cross 0.5 per step, to stop the support churning.
 - [ ] B>4 only pays if lanes get cheaper: e.g. B=6 with check_every=16 to win back steps.
 
 ## Prune

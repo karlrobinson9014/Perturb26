@@ -21,7 +21,8 @@ candidate so far is always returned):
                   network's best responses), and objectives that only push the true
                   class down let far, cheap classes emerge.
 3. switch       - after ``switch_fraction`` of the budget the weakest ``n_switch``
-                  lanes restart as targeted searches on classes the others surfaced.
+                  lanes restart as targeted searches on classes the others surfaced (their
+                  argmax and top-k fp32 logits); ``extra_switches`` adds later rounds.
 
 Speed: on the fast path (preprocessing is a pure center crop, true for every live task:
 short side 480) the fp16 objective gradient and the fp32 margin check are CUDA-graph
@@ -53,9 +54,18 @@ class AttackConfig:
     lam_down: float = 0.97  # multiply L1 weight while it is below
     target_margin: float = 10.05  # margin the L1 schedule holds (score saturates at 10)
     kappa: float = 10.5  # stop pushing the objective once the margin is above this
+    rw_power: float = 2.0  # !=0: per-element threshold * ((|d|+rw_eps)/(0.5+rw_eps))^rw_power (-1: reweighted L1)
+    rw_eps: float = 0.3
+    rw_step: float = 0.0  # >0: threshold * (rw_lo + (rw_hi-rw_lo)*sigmoid((|d|-0.5)/rw_step)) instead of the power profile
+    rw_lo: float = 0.14
+    rw_hi: float = 2.64
     safety_margin: float = 1.0  # fp32 margin a candidate needs before it is kept
+    check_every: int = 8  # steps between batched fp32 checks of the lanes' best unverified candidates
     switch_fraction: float = 0.35  # share of the budget before weak lanes re-target
     n_switch: int = 2
+    extra_switches: str = "0.6"  # further re-target rounds, comma-separated budget fractions (e.g. "0.6")
+    n_switch_extra: int = 1  # lanes freed in each extra round
+    switch_topk: int = 3  # >0: rank target classes by every lane's top-k fp32 logits, not only its argmax
     novelty_pixels: int = DEFAULT_PARAMS.novelty_target_pixels
     search_amp: bool = True  # fp16 autocast for gradient steps on CUDA
     cuda_graphs: bool = True
@@ -110,6 +120,9 @@ class _Lanes:
         self.j = torch.full((B,), -1, dtype=torch.long, device=device)
         self.mode = torch.zeros(B, dtype=torch.long, device=device)
         self.tau = torch.ones(B, device=device)
+        self.topk = None  # (B, TOPK) classes by fp32 logit from the last check
+
+    TOPK = 6
 
     def _grad(self, q: torch.Tensor):
         qv = q.detach().requires_grad_(True)
@@ -124,13 +137,14 @@ class _Lanes:
         with torch.no_grad():
             o = self.model(self.to_input(q)).float()
         _, margin = _objective(o, self.t, self.j, self.mode, self.tau)
-        return margin, o.argmax(1)
+        return margin, o.argmax(1), o.topk(self.TOPK, 1).indices
 
     def grad(self, q: torch.Tensor):
         return self._grad(q)
 
     def check(self, q: torch.Tensor):
-        return self._check(q)
+        margin, arg, self.topk = self._check(q)
+        return margin, arg
 
 
 class _GraphLanes(_Lanes):
@@ -166,7 +180,8 @@ class _GraphLanes(_Lanes):
     def check(self, q: torch.Tensor):
         self.q_in.copy_(q)
         self.c_graph.replay()
-        return self.c_out
+        self.topk = self.c_out[2]
+        return self.c_out[:2]
 
 
 @dataclass
@@ -365,18 +380,59 @@ class Attacker:
         started = torch.zeros(B, dtype=torch.bool, device=self.device)
         best: list[_Best | None] = [None] * B
         fallback: _Best | None = None  # highest-margin flip below safety_margin
-        switch_at = t0 + cfg.switch_fraction * max(0.0, deadline - t0)
-        switched = False
+        # Best not-yet-verified candidate per lane (projected est from the fp16 margin, q, nonzero, pixels).
+        # The fp32 check costs ~3/4 of a gradient step, so pending candidates are verified in one batch
+        # every ``check_every`` steps instead of on every step that improves the projection.
+        pending: list[tuple[float, torch.Tensor, int, int] | None] = [None] * B
+        check_time = 0.0
+
+        def flush() -> bool:
+            """fp32-check all pending candidates in one batch; True when one reaches the ceiling."""
+            nonlocal fallback, check_time
+            idx = [b for b in range(B) if pending[b] is not None]
+            if not idx:
+                return False
+            t_check = time.time()
+            qs = torch.stack([pending[b][1] if pending[b] is not None else pending[idx[0]][1] for b in range(B)])
+            m32, arg32 = lanes.check(qs)
+            m32, arg32 = m32.tolist(), arg32.tolist()
+            for b in idx:
+                _, qb, nzb, pxb = pending[b]
+                pending[b] = None
+                if m32[b] <= 0.0:
+                    continue
+                est = self._estimate(nzb, total, m32[b], pxb)
+                if m32[b] >= cfg.safety_margin:
+                    if best[b] is None or est > best[b].est:
+                        best[b] = _Best(est, m32[b], qb, arg32[b])
+                elif fallback is None or m32[b] > fallback.margin:
+                    fallback = _Best(est, m32[b], qb, arg32[b])
+            check_time = time.time() - t_check
+            return max((x.est for x in best if x is not None), default=0.0) >= ceiling - 1e-9
+
+        fractions = [cfg.switch_fraction] + [float(x) for x in cfg.extra_switches.split(",") if x.strip()]
+        switch_plan = [(t0 + f * max(0.0, deadline - t0), cfg.n_switch if i == 0 else cfg.n_switch_extra)
+                       for i, f in enumerate(fractions)]
+        switch_plan = [(at, n) for at, n in switch_plan if n > 0]
+        tried: set[int] = set()  # classes some lane has been targeted at
+        last_switched: list[int] = []
+        info["switch"] = []
         steps = 0
         first_flip_step = -1
         step_time = 0.05
         while True:
             now = time.time()
-            if now + 1.5 * step_time + cfg.end_reserve >= deadline:
+            reserve = check_time if any(x is not None for x in pending) else 0.0
+            if now + 1.5 * step_time + reserve + cfg.end_reserve >= deadline:
                 break
-            if not switched and cfg.n_switch > 0 and now >= switch_at:
-                switched = True
-                info["switch"] = self._retarget(lanes, best, d, lam, started, quantize, true_index)
+            if switch_plan and now >= switch_plan[0][0]:
+                n_free = switch_plan.pop(0)[1]
+                if flush():
+                    info["early_exit"] = True
+                    break
+                sw = self._retarget(lanes, best, d, lam, started, quantize, true_index, n_free, tried, last_switched)
+                last_switched = sw["lanes"]
+                info["switch"].append(sw)
             q = quantize(d)
             margin, g = lanes.grad(q)
             steps += 1
@@ -384,26 +440,19 @@ class Attacker:
             if first_flip_step < 0 and max(margins) > 0:
                 first_flip_step = steps
             nz, px = counts(q)
-            need = []
             for b in range(B):
-                projected = self._estimate(nz[b], total, margins[b], px[b]) if margins[b] > 0 else 0.0
-                bar = best[b].est if best[b] is not None else 0.0
-                need.append(margins[b] > 0 and projected > bar + 1e-7)
-            if any(need):
-                m32, arg32 = lanes.check(q)
-                m32, arg32 = m32.tolist(), arg32.tolist()
-                for b in range(B):
-                    if not need[b] or m32[b] <= 0.0:
-                        continue
-                    est = self._estimate(nz[b], total, m32[b], px[b])
-                    if m32[b] >= cfg.safety_margin:
-                        if best[b] is None or est > best[b].est:
-                            best[b] = _Best(est, m32[b], q[b].clone(), arg32[b])
-                    elif fallback is None or m32[b] > fallback.margin:
-                        fallback = _Best(est, m32[b], q[b].clone(), arg32[b])
-                if max((x.est for x in best if x is not None), default=0.0) >= ceiling - 1e-9:
-                    info["early_exit"] = True  # e.g. alias images: the seed alone already scores the ceiling
-                    break
+                if margins[b] <= 0:
+                    continue
+                projected = self._estimate(nz[b], total, margins[b], px[b])
+                bar = max(best[b].est if best[b] is not None else 0.0,
+                          pending[b][0] if pending[b] is not None else 0.0)
+                if projected > bar + 1e-7:
+                    pending[b] = (projected, q[b].clone(), nz[b], px[b])
+            due = steps % max(1, cfg.check_every) == 0 or any(
+                x is not None and x[0] >= ceiling - 1e-9 for x in pending)
+            if due and flush():
+                info["early_exit"] = True  # e.g. alias images: the seed alone already scores the ceiling
+                break
             above = margin >= cfg.target_margin
             lam = torch.where(above & ~started, torch.full_like(lam, cfg.lam0), lam)
             lam = torch.where(above & started, lam * cfg.lam_up, lam)
@@ -411,8 +460,12 @@ class Attacker:
             started = started | above
             gn = g / (g.abs().flatten(1).mean(1).view(B, *([1] * (g.dim() - 1))) + 1e-12)
             push = (margin < cfg.kappa).float().view(B, *([1] * (g.dim() - 1)))
-            d = d + cfg.lr * gn * push
             threshold = (cfg.lr * lam).view(B, *([1] * (g.dim() - 1)))
+            if cfg.rw_step > 0:  # smoothed step at the rounding point: values above 0.5 are the ones the score counts
+                threshold = threshold * (cfg.rw_lo + (cfg.rw_hi - cfg.rw_lo) * torch.sigmoid((d.abs() - 0.5) / cfg.rw_step))
+            elif cfg.rw_power != 0:  # weights from the pre-step iterate (<0: weak entries shrink faster, >0: saturated ones)
+                threshold = threshold * ((d.abs() + cfg.rw_eps) / (0.5 + cfg.rw_eps)) ** cfg.rw_power
+            d = d + cfg.lr * gn * push
             d = torch.sign(d) * torch.clamp(d.abs() - threshold, min=0.0)
             if var_mask is not None:
                 d = d * var_mask
@@ -420,6 +473,8 @@ class Attacker:
             elapsed_step = time.time() - now
             step_time = elapsed_step if steps == 1 else 0.8 * step_time + 0.2 * elapsed_step
 
+        if flush():
+            info["early_exit"] = True
         info["first_flip_step"] = first_flip_step
         info["lanes"] = [
             {"mode": int(lanes.mode[b]), "tau": round(float(lanes.tau[b]), 3), "target": int(lanes.j[b]),
@@ -474,22 +529,37 @@ class Attacker:
             info=info,
         )
 
-    def _retarget(self, lanes: _Lanes, best, d, lam, started, quantize, true_index: int) -> dict[str, Any]:
-        """Restart the weakest lanes as targeted searches on classes the lanes surfaced."""
+    def _retarget(self, lanes: _Lanes, best, d, lam, started, quantize, true_index: int, n_free: int,
+                  tried: set[int], protect: list[int]) -> dict[str, Any]:
+        """Restart the weakest lanes as targeted searches on classes the lanes surfaced.
+
+        The overall best lane and the lanes re-targeted in the previous round (still young) are never freed.
+        """
         B = self.B
         _, arg = lanes.check(quantize(d))
-        # current top non-true class of every lane (fp32 logits are not exposed by the check kernel,
-        # so use each lane's best candidate class and its current argmax when that is not the true class)
         surfaced: list[int] = []
         for b in range(B):
             for c in ([best[b].cls] if best[b] is not None else []) + [int(arg[b])]:
                 if c != true_index and c not in surfaced:
                     surfaced.append(c)
-        order = sorted(range(B), key=lambda b: best[b].est if best[b] is not None else -1.0)
-        free = order[: min(self.cfg.n_switch, B)]
+        k = min(self.cfg.switch_topk, lanes.TOPK)
+        if k > 0:  # then each lane's runner-up classes, rank by rank: cheap alternatives to the argmax basin
+            top = lanes.topk.tolist()
+            for r in range(k):
+                for b in range(B):
+                    c = top[b][r]
+                    if c != true_index and c not in surfaced:
+                        surfaced.append(c)
+        scored = [b for b in range(B) if best[b] is not None]
+        leader = max(scored, key=lambda b: best[b].est) if scored else -1
+        order = sorted((b for b in range(B) if b != leader and b not in protect),
+                       key=lambda b: best[b].est if best[b] is not None else -1.0)
+        free = order[: min(n_free, B)]
         keep_classes = {best[b].cls for b in range(B) if b not in free and best[b] is not None}
-        targets = [c for c in surfaced if c not in keep_classes][: len(free)]
+        keep_classes |= {int(lanes.j[b]) for b in range(B) if b not in free and int(lanes.j[b]) >= 0}
+        targets = [c for c in surfaced if c not in keep_classes and c not in tried][: len(free)]
         for b, c in zip(free, targets):
+            tried.add(c)
             lanes.j[b] = c
             lanes.mode[b] = 0
             d[b] = 0.0

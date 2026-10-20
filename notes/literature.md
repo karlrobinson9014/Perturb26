@@ -29,3 +29,22 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
 - Enhancing Sparsity by Reweighted L1 Minimization (Candes, Wakin, Boyd, 2008), https://doi.org/10.1007/s00041-008-9045-x :
   per-element L1 weights 1/(|x|+eps) from the previous iterate approximate L0. Tried iter 205 as `rw_eps` in the ISTA
   threshold: worse (16-img -0.0014..-0.0023, more nonzeros); the inverse weighting (saturated entries shrink harder) won.
+- Between hard and soft thresholding: optimal iterative thresholding algorithms (Liu, Barber, 2018),
+  https://consensus.app/papers/details/e74b7313534d5dd6b7c83d167af53c24/ : thresholding operators between soft and hard
+  (lq, reciprocal thresholding) have better guarantees than either. Here: a smoothed-step shrink profile at the 0.5
+  rounding point (`rw_step`), tried iter 207 (see research_log).
+- sigma-zero: Gradient-based Optimization of l0-norm Adversarial Examples (Cina et al., 2024),
+  https://consensus.app/papers/details/16ff8bc344305450b4853b10a634b1e2/ : smooth l0 surrogate x^2/(x^2+sigma^2) plus an
+  adaptive threshold projection. Its gradient is largest for small entries (like reweighted L1, which lost in iter 205),
+  so not tried as such; its adaptive threshold matches our lam schedule.
+- A New Proximal Iterative Hard Thresholding Method with Extrapolation (Zhang et al., 2018),
+  https://consensus.app/papers/details/80f75b58ab3d51e293a3d37febfa9602/ and Accelerated IHT for l0 box-constrained
+  problems (Wu et al., 2019), https://consensus.app/papers/details/14ffc81b82965c2780eae987d5b9b939/ : l0 + box via
+  proximal hard thresholding with extrapolation (momentum on d). Momentum on the ISTA iterate not tried yet (ideas.md).
+- Sparse and Imperceptible Adversarial Attack via a Homotopy Algorithm (Zhu, Chen, Wang, 2021),
+  https://arxiv.org/abs/2106.06027 : l0-regularised loss with nmAPG, then an "l0 change control" step that limits how
+  many entries enter/leave per iteration, and a post-attack step to escape bad minima. Not tried.
+- Fast Minimum-norm Adversarial Attacks through Adaptive Norm Constraints (Pintor et al., 2021),
+  https://consensus.app/papers/details/1d2773a56d0359d5b9a67ba771dd54e4/ : adapts the norm budget eps up/down around the
+  boundary, like our lam_up/lam_down; HO-FMN (Mura et al., 2024) finds step-size schedulers matter. Motivates the
+  iter 207 lr/lam retune.

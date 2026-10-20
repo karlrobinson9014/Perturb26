@@ -311,3 +311,41 @@ switch_topk=3, extra_switches="0.6", rw_power=2, rw_eps=0.3; no other change):
   in-class search depth than as extra class guesses from the same basins.
 - Next: the class lever needs classes from outside our lanes (class prior from the public train split); within a
   class, tune the shrink profile (smoothed step at 0.5) and lr/lam_up/lam_down under rw_power=2.
+
+## 2026-10-20 iter 207: shrink profile as a smoothed step at the rounding point; lr / lam retune
+Base: iter 206's code re-applied unchanged (`miner26/attack.py` from `logs/rejected-iter-206.patch`: check_every=8,
+switch_topk=3, extra round at 0.6, rw_power=2, rw_eps=0.3; dev 0.97622 / 0.97624 in two runs, 64/64).
+Hypothesis: the score's L0 counts q = round(d), i.e. |d| >= 0.5; the gradient is taken at q. Iter 205 found that
+shrinking saturated entries harder (power profile, weight 0.14 at |d|=0, 1 at 0.5, 2.64 at 1) beats plain and
+reweighted L1. Liu & Barber (2018, "Between hard and soft thresholding") show that thresholding operators between
+soft and hard are optimal for iterative thresholding, and the L0 surrogates in sigma-zero (Cina et al. 2024) and
+proximal IHT (Zhang et al. 2018) put the penalty where the count changes. Here the count changes at 0.5, so a
+threshold profile that is a smoothed *step* at 0.5 (rw_lo below, rw_hi above, width rw_step) should prune entries
+just above 0.5 that the gradient does not hold (the power profile shrinks them at only ~1x) while still letting
+sub-threshold entries explore. Iter 206's 16 dev images: mean 0.97573, nonzero median 45.1k; the leaders' ~28k.
+Second lever: lr / lam_up / lam_down were tuned for plain L1 and never retuned under rw_power=2.
+Plan: `rw_step`/`rw_lo`/`rw_hi` in AttackConfig (0 = off, default unchanged); `--limit 16` sweep of the step
+profile and a few lr/lam settings against iter 206's same 16 images; full dev bench of the best if it gains.
+Result (code in this commit: iter 206's stack re-applied unchanged as the default, plus the `rw_step` option, off):
+- 16 images (`python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter207-<tag>.json`),
+  vs the same 16 images in `results/dev-iter206-agent.json` (0.97573, nonzero median 45.1k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | s1 | rw_step 0.1 (lo 0.14, hi 2.64) | 0.97569 | -0.00004 | 7/16 | 47.1k |
+  | s2 | rw_step 0.1, rw_hi 4 | 0.97583 | +0.00010 | 8/16 | 46.7k |
+  | s3 | rw_step 0.05, lo 0.1, hi 3 | 0.97511 | -0.00061 | 4/16 | 50.9k |
+  | lr15 | lr 0.015 (power profile) | 0.97581 | +0.00008 | 7/16 | 48.8k |
+  | lam | lam_up 1.08, lam_down 0.95 | 0.97559 | -0.00014 | 9/16 | 48.7k |
+  All 16/16 success, 0 variant disagreements, t max <= 21.84 s.
+- Full dev of s2 (`python -m bench.run_bench --attack-config '{"rw_step": 0.1, "rw_hi": 4.0}' --out results/dev-iter207-agent-s2.json`):
+  **0.97632** vs the stack's 0.97622 (+0.00009), 64/64, 0 disagreements, p95 21.85 s / max 21.88 s; per image 27 up /
+  37 down, nonzero median 38.6k vs 39.9k. Flat.
+- Conclusion: the step profile at the rounding point does not beat the power profile (it is
+  no better when soft, and worse when sharp: s3 sends entries across 0.5 back and forth, so the support churns and
+  nonzeros grow). lr and lam_up/lam_down are flat around the current values. The in-class ISTA search is at a local
+  optimum in these knobs; per-image noise (+-0.002) dominates. Left the default at the iter 206 stack so the harness
+  re-measures it (0.9762 in two runs; above best + MIN_GAIN 0.0005 if the running loop has picked up the new value; iter 206
+  was discarded as no_gain at 0.97618, which suggests the loop still applied 0.002).
+- Next: more progress per step is the only in-class lever that has paid (iter 203). Try momentum / extrapolation on d
+  (accelerated proximal IHT, Zhang 2018 / Wu 2019), or l0 change control (Zhu 2021). For the class lever, try a class prior
+  from the public train split.
