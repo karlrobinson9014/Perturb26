@@ -481,3 +481,40 @@ left in so the harness measures it independently):
 - Next: the gap to the leaders (~0.002) is the target class and in-class sparsity, not margin. If the operator wants
   extra TF32 headroom, a cheap form is target_margin 10.1 (12 images sit at 9.98-10.0 and lose < 1e-5 each, so this is
   insurance, not score).
+
+## 2026-10-20 iter 212: operator directive: prune + swap local search with exact batched scoring
+Base: iter 209's accepted code (dev 0.97696 harness; nonzero median 36.0k, margins ~10.0).
+Hypothesis (operator): after the search, score 32-64 moves per forward batch with the exact estimate (fp32 margin ->
+`estimate_score`): drop the k values with the smallest first-order margin cost g*q, or drop k and add some of the zero
+values with the largest |g|, deterministic and randomised subsets, and keep the best. Unlike iter 202's greedy prune
+(first-order ranking, 4 sizes, one check per round, -0.0006 on 16 images), every move here is judged on the real
+objective, 32 at a time, and swaps (drop 2k / add k) can buy margin back for further drops. Cost: an fp32 forward is
+~8.3 ms/image on the 4090 (scratch probe, N=16-64), so a 32-candidate round is ~0.3 s ~ 6 lane steps; the polish phase
+takes the last (1 - polish_fraction) of the budget from ISTA.
+Plan: `polish_fraction` / `polish_batch` in AttackConfig (0 = off). Probe 3 images, then `--limit 16` with fractions
+0.8 / 0.7 / 0.6 vs the same 16 images in `results/harness/dev-iter209-8c572ce.json`; full dev of the best.
+Result (negative; code in this commit: `polish_fraction` (0 = off, behaviour unchanged) / `polish_batch` options,
+`Attacker._polish`):
+- Probe (scratch script, Attacker.run at 22 s on dev images 0-2): the local search does work on its own terms. At
+  polish_fraction 0.8, batch 32: 12-13 rounds of ~0.25 s, 12 accepts each, +9e-5 / +1.1e-4 / +8.2e-4 over the
+  post-search best. Batch 16 makes ~0.14 s rounds and accepts more per second (image 2: 45/49 accepted, +1.3e-3 from
+  0.6 of the budget). Random subsets of the cheap pool and drop-2k/add-k swaps win as often as the plain drops, so
+  exact scoring does find moves that first-order ranking misses. It was still accepting when time ran out.
+- But it does not pay for the ISTA time it takes. 16 images (`python -m bench.run_bench --limit 16 --attack-config
+  '<cfg>' --out results/dev16-iter212-<tag>.json`), vs the same 16 images in `results/harness/dev-iter209-8c572ce.json`
+  (0.97630, nonzero median 45.1k):
+  | tag | config | mean | delta | up | nonzero median |
+  |---|---|---|---|---|---|
+  | p0.85 | polish_fraction 0.85, batch 32 | 0.97594 | -0.00036 | 2/16 | 48.1k |
+  | p0.9b16 | polish_fraction 0.9, batch 16 | 0.97613 | -0.00017 | 5/16 | 45.5k |
+  All 16/16 success, 0 variant disagreements, t max <= 21.89 s. A 0.75 run was stopped early (the trend was clear).
+- Why: ISTA has not plateaued at the end of the budget. lam keeps rising and the support keeps shrinking, so the
+  last ~65 steps (p0.85: 370 vs 435 steps) remove more values than ~13 exact-search rounds do. The polish rate is
+  ~1e-5..3e-5 per round, about what the same time of ISTA gives, and the ISTA candidate it starts from is worse.
+  This repeats iter 202 with exact scoring: removal and swap moves around an ISTA point that is still moving are
+  redundant with ISTA.
+- No full dev bench (no candidate). The directive's "1 % -> 0.3 %" is not on this path: the accepted miner changes
+  ~4 % of values (36k of ~920k) at margin 10, and the polish moved nonzeros by < 1 % per image.
+- Next: polish only pays if it is free. (a) Run it *inside* the lane batch (score the leader's swap candidates with
+  the spare check slots) rather than as a separate phase. (b) Use it only on margin overshoot > 10.1 (ideas.md).
+  (c) Use the probe's finding that random subsets win: add random drop masks to ISTA's own fp32 checks.

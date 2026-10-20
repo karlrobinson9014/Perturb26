@@ -46,8 +46,9 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 ## Prune
 - [x] Greedy first-order prune of the best candidate in the last 20 % of the budget (4 drop sizes per batched fp32 check): iter 202, 16-img 0.97300 vs 0.97365, discarded. Candidates are already tight at margin 10; only the overshoot above 10 is recoverable (~1e-5..4e-4/image).
 - [ ] Clip margin overshoot only: if the final best has margin > 10.1, a few cheap prune rounds (no search time lost) recover up to ~4e-4 on such images.
-- [ ] Batched prune: evaluate several drop fractions in one forward batch.
-- [ ] Re-gradient after each accepted prune (already done) vs swap moves (drop k, add k elsewhere).
+- [x] Batched exact local search (operator directive): 16-32 drop / drop-2k-add-k / random-subset moves per fp32 batch, exact estimate, re-gradient per round (`polish_fraction`, off): iter 212, 16-img p0.85 -0.00036, p0.9 batch 16 -0.00017. It accepts ~90 % of rounds (+1e-4..1e-3/image) but loses to the ISTA steps it replaces; ISTA is still pruning at the deadline.
+- [ ] Free polish: score the leader's drop/swap candidates in idle check-batch slots during the search instead of a separate phase.
+- [ ] Random drop masks: in the probe, random subsets of the cheapest pool won as often as first-order top-k. Try them in ISTA's own checks.
 - [ ] Final polish: try flipping signs of the weakest entries instead of dropping them.
 
 ## Speed (more steps per budget)
