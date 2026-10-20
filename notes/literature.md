@@ -74,4 +74,4 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
   candidate for a late-budget "freeze support" phase.
 - Efficient Untargeted White-Box Adversarial Attacks Based on Simple Initialization (Zhou et al., 2024),
   https://consensus.app/papers/details/857dd1fa722956ccb112e7a968c935d3/ : a guided init instead of random restarts.
-  Relevant to warm-starting re-targeted lanes (they restart from d=0 at 35 % of the budget). Not tried.
+  Motivated warm-starting re-targeted lanes from the leader's iterate (`retarget_warm`): iter 209, +0.0002 (16 img), in the dev 0.97683 stack.
