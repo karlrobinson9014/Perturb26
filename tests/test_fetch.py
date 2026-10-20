@@ -10,7 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from PIL import Image
 
-from miner26.fetch import download_with_retries, fetch_new_task, is_new_task, task_epoch
+from miner26 import fetch as fetch_mod
+from miner26.fetch import download_with_retries, fetch_new_task, hedge_delay, is_new_task, task_epoch
 from perturbnet.api_client import get_current_task
 from perturbnet.image_io import image_url_to_b64
 
@@ -47,6 +48,18 @@ class FakeApi:
                     return
                 if step == "hang":
                     api.stop.wait(3.0)
+                    return
+                if step == "trickle":  # a valid image, a few bytes at a time: never idle long enough to time out
+                    png = _png_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(png)))
+                    self.end_headers()
+                    for i in range(0, len(png), 8):
+                        if api.stop.wait(0.25):
+                            return
+                        self.wfile.write(png[i:i + 8])
+                        self.wfile.flush()
                     return
                 if step == "500":
                     self.send_response(500)
@@ -183,3 +196,41 @@ def test_fetch_with_fake_clock_counts_attempts():
     assert task is None
     # 3 + 0.5 + 3 + 0.5 + 3 + 0.5 = 110.5 > deadline would be exceeded, so the third request is capped
     assert calls[:2] == [3.0, 3.0] and all(t <= 3.0 for t in calls) and now[0] <= 110.0 + 0.5
+
+
+def test_download_hedges_past_a_slow_transfer(api_factory):
+    # Live dry run 2026-10-20 round 10: one attempt trickled for ~11 s without ever timing out.
+    png = _png_bytes()
+    api = api_factory([_task("x")], ["trickle", png])
+    t0 = time.time()
+    b64 = download_with_retries(
+        image_url_to_b64, api.base + "/img.png", deadline=t0 + 10, request_timeout=1.0, hedge_after=0.3
+    )
+    elapsed = time.time() - t0
+    assert Image.open(io.BytesIO(base64.b64decode(b64))).size == (8, 6)
+    assert api.image_calls == 2 and elapsed < 1.5, (api.image_calls, elapsed)  # the trickle alone takes ~2.5 s
+
+
+def test_download_fast_path_uses_one_request(api_factory):
+    api = api_factory([_task("x")], [_png_bytes()])
+    download_with_retries(image_url_to_b64, api.base + "/img.png", deadline=time.time() + 5, hedge_after=1.0)
+    assert api.image_calls == 1
+
+
+def test_download_times_out_when_every_attempt_stalls(api_factory):
+    api = api_factory([_task("x")], ["trickle"])
+    t0 = time.time()
+    with pytest.raises(TimeoutError):
+        download_with_retries(image_url_to_b64, api.base + "/img.png", deadline=t0 + 0.8, hedge_after=0.2, max_parallel=2)
+    assert time.time() - t0 < 1.5 and api.image_calls == 2
+
+
+def test_hedge_delay_adapts_to_measured_downloads(monkeypatch):
+    monkeypatch.setattr(fetch_mod, "_DOWNLOAD_SECONDS", fetch_mod.deque(maxlen=20))
+    assert hedge_delay() == fetch_mod.DOWNLOAD_HEDGE_SECONDS  # not enough samples yet
+    fetch_mod._DOWNLOAD_SECONDS.extend([0.4, 0.5, 0.45])
+    assert hedge_delay() == pytest.approx(1.35)
+    fetch_mod._DOWNLOAD_SECONDS.extend([0.05] * 10)
+    assert hedge_delay() == 0.8  # floor
+    fetch_mod._DOWNLOAD_SECONDS.extend([3.0] * 20)
+    assert hedge_delay() == 2.5  # cap
