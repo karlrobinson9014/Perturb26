@@ -631,3 +631,39 @@ Result (neutral; code in this commit: `sweep_final` (0 = off, behaviour unchange
   fp16 screen, end-only) lands at 1e-5..5e-5 per image, below the noise of which class wins. No full dev bench (no candidate).
 - Recommendation to the operator: retire the prune/swap directive. The "1 % -> 0.3 %" gap is a different basin (class
   or support); the run-to-run class noise (+-5e-4 on single images) is ~10x larger than any local move.
+
+## 2026-10-20 iter 216: operator directive (fifth time): exact batched drops on a *frozen* support
+Base: iter 209's accepted code (dev 0.97696 harness). Iters 202/212/213/214/215 ran prune/swap around a moving ISTA
+point and landed at -0.0004..0 on 16 images. Concrete reason this one differs: iter 213 found its accepted exact drops
+are undone (ISTA re-grows the entries, or later ISTA candidates supersede them). Here the leader's support is frozen
+late in the budget (Lin 2023, support shrinking; never tried, ideas.md): after `freeze_at` of the budget each lane's
+d is masked to the entries with |d| >= `freeze_tau` at that moment, so ISTA can only shrink it, and exact drop
+candidates of the leader's best (k smallest-|d| support entries, k adaptive, filling the idle slots of the batched
+fp32 check, no extra forward) are fed back by zeroing them in d and in the mask, so they stick.
+Expected: freeze alone saves the late steps ISTA spends re-adding entries (e.g. dev image 0, 22.5k nonzeros at 445
+steps, margin 10.07); drops on top add the few-hundred free entries per image iter 214 measured (~5e-5/image).
+Honest prior: small (+0..3e-4 mean). Plan: `freeze_at` / `freeze_tau` / `freeze_drop` in AttackConfig (off =
+unchanged), `--limit 16` vs the same 16 images in `results/harness/dev-iter209-8c572ce.json` (0.97630); full dev only
+if > +0.0003.
+Result (negative / neutral; code in this commit: `freeze_at` / `freeze_tau` / `freeze_drop` options, all off, behaviour unchanged):
+- `python -m bench.run_bench --limit 16 --attack-config '<cfg>' --out results/dev16-iter216-<tag>.json`, compared per
+  image with the same 16 images in `results/harness/dev-iter209-8c572ce.json` (0.97630, nonzero median 45.1k):
+  | tag | config | mean | delta | up |
+  |---|---|---|---|---|
+  | f75 | freeze_at 0.75, tau 0.5 | 0.97590 | -0.00040 | 1/16 |
+  | f75d16 | freeze_at 0.75, tau 0.5, freeze_drop 16 | 0.97567 | -0.00063 | 1/16 |
+  | f90t25d16 | freeze_at 0.9, tau 0.25, freeze_drop 16 | 0.97637 | +0.00007 | 9/16 |
+  All 16/16 success, 0 variant disagreements, time_max <= 21.90 s. Dev image 2 (key 3rd in the manifest) is +0.0008..+0.0011
+  in all three runs (18-20k vs 22.8k nonzeros): the baseline run was unlucky there (class/timing), not the method.
+- Freezing the support costs: with f75 nonzeros grow on 14/16 images (e.g. 60.2k -> 65.5k, 71.7k -> 78.4k). ISTA's
+  late phase is not prune-only. It swaps entries in and out, and the swaps are what keep shrinking the count at
+  margin 10. Exact drops fed back into a frozen support make it worse (-0.00063): the accepted drops push the
+  margin down, and the frozen lane cannot add the cheap entries that would restore it.
+- Late and loose (0.9, tau 0.25) is harmless but neutral, like iters 213-215 (local moves ~5e-5/image).
+- Conclusion: the fifth prune/swap variant gives the same answer. Making the exact drops stick by forbidding
+  regrowth removes the swap moves ISTA was using. The "1 % -> 0.3 %" route is not a local search around this solution.
+  Support freezing (Lin 2023) is closed too. No full dev bench (no candidate above +0.0003).
+- Next: change the basin, not the polish: target classes the lanes never surface (leaders' class has clean rank
+  median ~90), or a second independent search seeded from a different class at 0.5 of the budget.
+  Side note: `tests/test_attack_early_exit.py::test_ordinary_image_runs_to_the_deadline` failed once on a cold GPU
+  (first pytest run of the session), passed on re-run with and without this change: flaky timing test.

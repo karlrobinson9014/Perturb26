@@ -39,7 +39,8 @@ Format: `- [ ] idea (why)`; when tried: `- [x] idea: iter N, result, kept/discar
 - [ ] Momentum follow-ups: momentum + lr retune (the EMA smooths, so a larger lr may now be stable); Nesterov look-ahead (gradient at round(d + beta*m)); oscillation-triggered restart (O'Donoghue & Candes 2015) when a lane's lam flips direction.
 - [x] Decaying per-lane step size (`lr_final`, MDCS, Tao 2026), with momentum 0.5: iter 209, 16-img lr_final 0.3 -0.00042, 0.5 -0.00022, lr 0.015 + lr_final 0.3 -0.00010 (4/16 up each). Worse the more it decays: late steps still need full size (lam keeps moving the boundary). Option kept, off.
 - [ ] The opposite of decay: lr warm-up / larger late lr, or lr tied to lam (lam rising = support still too large).
-- [ ] Support shrinking late in the budget (Non-Lipschitz Attack, Lin 2023): freeze entries at 0 once they have left the support, so the last phase only prunes.
+- [x] Support shrinking late in the budget (Lin 2023) + exact drops fed back into the frozen support (operator directive, fifth time): iter 216, freeze 0.75 -0.00040 (1/16 up), +drops -0.00063, freeze 0.9 tau 0.25 +drops +0.00007 (noise). Late ISTA swaps entries in and out; freezing removes those swaps. Closed (`freeze_at`, off).
+- [ ] Flaky: `test_ordinary_image_runs_to_the_deadline` failed once on a cold GPU (iter 216); consider a warmup in that test (tests/ is agent-editable).
 - [ ] l0 change control (Zhu 2021 homotopy attack): cap how many entries cross 0.5 per step, to stop the support churning.
 - [ ] B>4 only pays if lanes get cheaper: e.g. B=6 with check_every=16 to win back steps.
 
