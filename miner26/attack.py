@@ -589,4 +589,5 @@ class Attacker:
             lam[b] = 0.0
             started[b] = False
             best[b] = None
-        return {"targets": targets, "lanes": free[: len(targets)]}
+        return {"targets": targets, "lanes": free[: len(targets)],
+                "leader_class": best[leader].cls if leader >= 0 else None}

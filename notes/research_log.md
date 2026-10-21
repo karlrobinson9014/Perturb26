@@ -414,3 +414,26 @@ Result (code in this commit: momentum 0.5 (iter 208) + `retarget_warm` = True as
   `bash harness/gate.sh` passes.
 - Next: warm-start variants (copy the leader's momentum; start from only its |d| > 0.5 entries; start from the lane that
   surfaced the class); late-budget support shrinking (Lin et al. 2023); class prior from the public train split.
+
+## 2026-10-22 (human session): semantic target-class prior, offline test (negative)
+- Question (Filus et al. 2025, literature.md): do the leaders' classes sit semantically close to the true class, so a
+  WordNet / CLIP shortlist could feed re-targeting? Data: `results/competitor-classes-dev.json` (64 dev images, best
+  competitor class per image, ~5 responses per image). Script `tools/semantic_classes.py` (CPU, deps outside .venv).
+- Rank of the leader's class among the 999 non-true classes (hit@20 = images where it is in the top 20):
+  | measure | median rank | hit@10 | hit@20 | hit@100 |
+  |---|---|---|---|---|
+  | clean logit (fp32) | 81.5 | 16 | 26 | 35 |
+  | WordNet Wu-Palmer | 218 | 3 | 6 | 21 |
+  | WordNet path | 244 | 5 | 6 | 18 |
+  | CLIP ViT-B/32 text | 347 | 3 | 6 | 19 |
+  | EfficientNetV2-L classifier-weight cosine | 513 | 1 | 4 | 15 |
+  | random | 500 | 0.6 | 1.3 | 6.4 |
+- Semantics beats random but is far weaker than the clean logits and mostly redundant with them (Spearman vs clean
+  rank 0.25-0.65; hits are cases like shark -> hammerhead, siamang -> langur that the logits already rank top 10).
+  Of the 38 images where the logit top 20 misses the leader's class, a semantic top 20 catches 0-2. Logit top 10 alone
+  hits 16/64; adding a semantic top 10 gives 16-17.
+- Within an image, across competitor responses in different classes, the *less* similar class scored higher in
+  68-71 % of pairs for every measure, and the lower-logit class in 73 % (288 pairs). Confounded (weaker miners may
+  aim at near classes), but it agrees with the 2026-10-19 finding: the cheap classes are far, not near.
+- Conclusion: no semantic prior. Do not retry WordNet/CLIP/classifier-weight shortlists. Class discovery must come from
+  the model's response under the attack (lanes, top-k at checkpoints), not from label semantics.

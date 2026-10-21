@@ -75,3 +75,27 @@ One bullet per paper: title (year), link, the one idea that applies to Perturb, 
 - Efficient Untargeted White-Box Adversarial Attacks Based on Simple Initialization (Zhou et al., 2024),
   https://consensus.app/papers/details/857dd1fa722956ccb112e7a968c935d3/ : a guided init instead of random restarts.
   Motivated warm-starting re-targeted lanes from the leader's iterate (`retarget_warm`): iter 209, +0.0002 (16 img), in the dev 0.97683 stack.
+- Sparse-PGD: A Unified Framework for Sparse Adversarial Perturbations Generation (Zhong et al., TPAMI 2024),
+  https://consensus.app/papers/details/683c7797a6ed5a61ac4ac176a451fc2e/ : PGD on a magnitude and a continuous sparse mask,
+  top-k projection (hard L0 budget), random mask re-init when stuck. Our levels are fixed at +-1, so only the mask part
+  applies; a hard budget instead of the L1 schedule is unlikely to help after the flat iter 205/207 retunes. Mask
+  re-init not tried. (Searched 2026-10-22, human session.)
+- PDPGD: Primal-Dual Proximal Gradient Descent Adversarial Attack (Matyasko et al., 2021),
+  https://consensus.app/papers/details/5a40fc88f1025d389a9c0a22dfd1c0af/ : minimum-norm attack as a primal-dual game with
+  proximal steps for l0/l1/linf; the dual update is the principled form of lam_up/lam_down. Not tried; low prior (iter 207).
+- SparseFool (Modas et al., CVPR 2019), https://consensus.app/papers/details/4a8157387a9b56b696733d6c488898b0/ : low boundary
+  curvature -> linearised DeepFool step with box-constrained l1. Linear, see the MALT entry: linear class screens fail here.
+- GreedyFool (Dong et al., 2020), https://consensus.app/papers/details/7f0b9ecd2c5051af94bdce19531ca886/ : greedy add then a
+  reduce (drop) stage. The drop stage is the prune/swap family closed in iters 202 and 211-220; do not retry.
+- FAB: Minimally distorted Adversarial Examples with a Fast Adaptive Boundary Attack (Croce, Hein, 2019),
+  https://consensus.app/papers/details/4a18ade873a85556803788b1f3fe4d2b/ and JMA (Tondi et al., TIFS 2024),
+  https://consensus.app/papers/details/aa1c4765c1b2537dbfee143cabd75486/ : per-class linearised boundary distance / Jacobian
+  Mahalanobis cost as a target-class ranking. Same family as MALT; our linear screen ranked the leaders' classes
+  129-605th, so not tried.
+- Opportunistic Target Selection (Tariolle et al., 2026), https://consensus.app/papers/details/d4b782231ea258e4a209d1baba314b2c/ :
+  switch an untargeted attack to the currently leading wrong class early; redundant with a margin loss (their negative
+  result), which our mode-0 lane already uses. Not tried.
+- Semantically Guided Adversarial Testing of Vision Models Using Language Models (Filus et al., 2025),
+  https://consensus.app/papers/details/74f50c75916e5dfbb1b5e34231834d1d/ : target classes ranked by semantic similarity
+  (CLIP / LM embeddings, WordNet). Tested offline 2026-10-22 against the leaders' classes: negative (semantic top 20 holds
+  the leader's class on 4-6/64 images vs 26/64 for the clean-logit top 20; research_log 2026-10-22). Do not retry.

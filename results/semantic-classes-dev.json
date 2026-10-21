@@ -1,0 +1,218 @@
+{
+ "n_images": 64,
+ "best_class": {
+  "clean_logit_rank": {
+   "median_rank": 81.5,
+   "mean_pct": 24.0,
+   "hit@1": 1,
+   "hit@5": 8,
+   "hit@10": 16,
+   "hit@20": 26,
+   "hit@50": 29,
+   "hit@100": 35
+  },
+  "wup": {
+   "median_rank": 218.0,
+   "mean_pct": 34.3,
+   "hit@1": 1,
+   "hit@5": 1,
+   "hit@10": 3,
+   "hit@20": 6,
+   "hit@50": 13,
+   "hit@100": 21,
+   "spearman_vs_clean_rank": 0.245
+  },
+  "path": {
+   "median_rank": 244.0,
+   "mean_pct": 35.8,
+   "hit@1": 1,
+   "hit@5": 3,
+   "hit@10": 5,
+   "hit@20": 6,
+   "hit@50": 10,
+   "hit@100": 18,
+   "spearman_vs_clean_rank": 0.242
+  },
+  "clip": {
+   "median_rank": 347.0,
+   "mean_pct": 40.0,
+   "hit@1": 1,
+   "hit@5": 2,
+   "hit@10": 3,
+   "hit@20": 6,
+   "hit@50": 14,
+   "hit@100": 19,
+   "spearman_vs_clean_rank": 0.407
+  },
+  "fc": {
+   "median_rank": 513.5,
+   "mean_pct": 47.4,
+   "hit@1": 0,
+   "hit@5": 1,
+   "hit@10": 1,
+   "hit@20": 4,
+   "hit@50": 12,
+   "hit@100": 15,
+   "spearman_vs_clean_rank": 0.646
+  },
+  "random_expectation": {
+   "median_rank": 500,
+   "mean_pct": 50.0,
+   "hit@1": 0.06,
+   "hit@5": 0.32,
+   "hit@10": 0.64,
+   "hit@20": 1.28,
+   "hit@50": 3.2,
+   "hit@100": 6.41
+  }
+ },
+ "within_image": {
+  "wup": {
+   "pairs": 241,
+   "concordance": 0.32
+  },
+  "path": {
+   "pairs": 243,
+   "concordance": 0.296
+  },
+  "clip": {
+   "pairs": 288,
+   "concordance": 0.337
+  },
+  "fc": {
+   "pairs": 288,
+   "concordance": 0.288
+  },
+  "clean_rank": {
+   "pairs": 288,
+   "concordance": 0.271
+  }
+ },
+ "examples": [
+  {
+   "true": "hot pot",
+   "best": "bucket",
+   "clean_rank": 23,
+   "wup": 184.0,
+   "path": 185.0,
+   "clip": 27.0,
+   "fc": 277.0
+  },
+  {
+   "true": "Japanese spaniel",
+   "best": "nipple",
+   "clean_rank": 412,
+   "wup": 523.5,
+   "path": 498.0,
+   "clip": 325.0,
+   "fc": 832.0
+  },
+  {
+   "true": "leopard",
+   "best": "schipperke",
+   "clean_rank": 408,
+   "wup": 110.0,
+   "path": 123.0,
+   "clip": 941.0,
+   "fc": 885.0
+  },
+  {
+   "true": "fireboat",
+   "best": "balloon",
+   "clean_rank": 528,
+   "wup": 17.0,
+   "path": 20.5,
+   "clip": 305.0,
+   "fc": 583.0
+  },
+  {
+   "true": "wombat",
+   "best": "porcupine",
+   "clean_rank": 5,
+   "wup": 7.0,
+   "path": 8.0,
+   "clip": 24.0,
+   "fc": 28.0
+  },
+  {
+   "true": "great white shark",
+   "best": "hammerhead",
+   "clean_rank": 7,
+   "wup": 1.0,
+   "path": 1.0,
+   "clip": 33.0,
+   "fc": 21.0
+  },
+  {
+   "true": "leafhopper",
+   "best": "pop bottle",
+   "clean_rank": 13,
+   "wup": 680.5,
+   "path": 663.5,
+   "clip": 182.0,
+   "fc": 918.0
+  },
+  {
+   "true": "maraca",
+   "best": "cheetah",
+   "clean_rank": 10,
+   "wup": 888.5,
+   "path": 927.0,
+   "clip": 786.0,
+   "fc": 529.0
+  },
+  {
+   "true": "trombone",
+   "best": "crane",
+   "clean_rank": 679,
+   "wup": 39.5,
+   "path": 34.5,
+   "clip": 380.5,
+   "fc": 967.0
+  },
+  {
+   "true": "Petri dish",
+   "best": "hair slide",
+   "clean_rank": 59,
+   "wup": 289.5,
+   "path": 337.0,
+   "clip": 269.0,
+   "fc": 884.0
+  },
+  {
+   "true": "bath towel",
+   "best": "armadillo",
+   "clean_rank": 86,
+   "wup": 746.5,
+   "path": 776.5,
+   "clip": 774.0,
+   "fc": 923.0
+  },
+  {
+   "true": "siamang",
+   "best": "langur",
+   "clean_rank": 2,
+   "wup": 13.0,
+   "path": 16.0,
+   "clip": 4.0,
+   "fc": 46.0
+  }
+ ],
+ "complement": {
+  "logit_top20_misses": 38,
+  "caught_by_semantic_top20": {
+   "wup": 1,
+   "path": 0,
+   "clip": 2,
+   "fc": 1
+  },
+  "logit_top20_alone": 26,
+  "logit_top10_or_semantic_top10": {
+   "wup": 16,
+   "path": 17,
+   "clip": 17,
+   "fc": 16
+  }
+ },
+ "source": "results/competitor-classes-dev.json (64 dev images, competitors' best class per image)"
+}
